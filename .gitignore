@@ -1,0 +1,67 @@
+# ==========================================
+# Entornos Virtuales (Virtual Environments)
+# ==========================================
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# ==========================================
+# Archivos de Cache de Python y Compilación
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# ==========================================
+# Variables de Entorno y Claves Secretas
+# (¡NUNCA subas estos archivos a GitHub!)
+# ==========================================
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# ==========================================
+# Bases de datos locales y migraciones
+# ==========================================
+*.sqlite3
+*.db
+# Descomenta la siguiente línea si usas SQLite y no quieres incluir la BD:
+# *.sqlite
+
+# ==========================================
+# Editores de código e IDEs
+# ==========================================
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ==========================================
+# Logs y Archivos Temporales
+# ==========================================
+*.log
+logs/
+*.tmp
+.temp/
+
+# ==========================================
+# Pruebas y Cobertura (Pytest / Coverage)
+# ==========================================
+.pytest_cache/
+.coverage
+htmlcov/
+.nox/
+.tox/
