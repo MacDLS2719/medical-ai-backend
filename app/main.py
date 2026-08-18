@@ -1,9 +1,3 @@
-import sys
-from pathlib import Path
-
-# Añade la carpeta 'backend' al PATH de Python ANTES de importar los routers/modelos
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
