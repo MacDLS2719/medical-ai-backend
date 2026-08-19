@@ -1,5 +1,6 @@
 import asyncio
 from typing import List
+from deep_translator import GoogleTranslator
 
 from app.schemas.medical import NormalizedDocument
 
@@ -23,20 +24,30 @@ class MedicalSearchService:
     async def search(
         self,
         query: str,
-        max_results: int = 5
+        max_results: int = 5,
+        target_lang: str = "en"
     ) -> dict:
+
+        search_query = query
+        if target_lang != "en" and query:
+            try:
+                search_query = await asyncio.to_thread(
+                    GoogleTranslator(source=target_lang, target='en').translate, query
+                )
+            except Exception as e:
+                print(f"Error translating query: {e}")
 
         results = await asyncio.gather(
             self.pubmed_service.search_and_fetch(
-                query,
+                search_query,
                 max_results
             ),
             self.clinical_trials_service.search_and_fetch(
-                query,
+                search_query,
                 max_results
             ),
             self.cochrane_service.search_and_fetch(
-                query,
+                search_query,
                 max_results
             ),
             return_exceptions=True
@@ -51,6 +62,17 @@ class MedicalSearchService:
             + clinical_trials_results
             + cochrane_results
         )
+
+        if target_lang != "en":
+            translator = GoogleTranslator(source='en', target=target_lang)
+            for doc in all_results:
+                try:
+                    if doc.title:
+                        doc.title = await asyncio.to_thread(translator.translate, doc.title)
+                    if doc.abstract and len(doc.abstract) > 0:
+                        doc.abstract = await asyncio.to_thread(translator.translate, doc.abstract[:4999])
+                except Exception as e:
+                    print(f"Error translating doc {doc.source_id}: {e}")
 
         return {
             "query": query,

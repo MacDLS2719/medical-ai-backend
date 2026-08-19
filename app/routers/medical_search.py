@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Header
 from sqlalchemy.orm import Session
 
 from app.schemas.medical import (
@@ -14,6 +14,7 @@ from app.services.cochrane_service import CochraneService
 from app.core.database import get_db
 from app.models.user import User
 from app.models.patient import Patient
+from app.core.i18n import normalize_language
 
 router = APIRouter(
     prefix="/api/medical",
@@ -33,9 +34,11 @@ def get_medical_search_service() -> MedicalSearchService:
 )
 async def medical_search(
     request: MedicalSearchRequest,
+    accept_language: str | None = Header(default=None),
     db: Session = Depends(get_db)
 ):
     service = get_medical_search_service()
+    target_lang = normalize_language(accept_language)
     
     user = db.query(User).filter(User.id == request.user_id).first()
     if not user:
@@ -63,7 +66,8 @@ async def medical_search(
     try:
         result = await service.search(
             query=query,
-            max_results=request.max_results
+            max_results=request.max_results,
+            target_lang=target_lang
         )
         # Note: Depending on service.search return type, you may need to wrap it in a dictionary if it isn't already a dict/model that matches MedicalSearchResponse
         # e.g., return {"results": result} if result is a list

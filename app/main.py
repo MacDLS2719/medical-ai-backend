@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import metadata, medical_search
+from app.routers import metadata, medical_search, ai_chat
 
 app = FastAPI(
     title="Medical AI API",
@@ -20,6 +21,7 @@ app.add_middleware(
 
 app.include_router(metadata.router)
 app.include_router(medical_search.router)
+app.include_router(ai_chat.router)
 
 
 @app.get("/")
