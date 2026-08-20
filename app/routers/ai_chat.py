@@ -1,58 +1,65 @@
 import os
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-from groq import Groq
 from dotenv import load_dotenv
-
-
 load_dotenv()
+from fastapi import APIRouter, HTTPException, Depends
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+from app.core.deps import get_db
 
-router = APIRouter(prefix="/ai", tags=["AI Medical Assistant"])
+from app.services.medical_search_service import MedicalSearchService
+from app.services.pubmed_service import PubMedService
+from app.services.clinical_trials_service import ClinicalTrialsService
+from app.services.cochrane_service import CochraneService
+
+from app.services.medical_document_service import MedicalDocumentService
+from app.services.medical_query_service import MedicalQueryService
+from app.services.medical_response_service import MedicalResponseService
+from app.services.groq_service import GroqService
+from app.services.medical_rag_service import MedicalRAGService
+
+router = APIRouter(prefix="/api/ai", tags=["AI Medical Assistant"])
 
 
 class ChatRequest(BaseModel):
     prompt: str
+    user_id: int
+    lang: str = "es"  # idioma de la consulta del usuario
+
+
+def get_medical_rag_service(db: Session = Depends(get_db)):
+    medical_search_service = MedicalSearchService(
+        pubmed_service=PubMedService(),
+        clinical_trials_service=ClinicalTrialsService(),
+        cochrane_service=CochraneService(),
+    )
+    return MedicalRAGService(
+        db=db,
+        medical_search_service=medical_search_service,
+        medical_document_service=MedicalDocumentService(db),
+        medical_query_service=MedicalQueryService(db),
+        medical_response_service=MedicalResponseService(db),
+        groq_service=GroqService()
+    )
+
 
 @router.post("/chat")
-def generate_response(request: ChatRequest):
-    api_key = os.getenv("GROQ_API_KEY")
-    
-    if not api_key:
-        raise HTTPException(
-            status_code=500, 
-            detail="Falta la variable de entorno GROQ_API_KEY"
-        )
-
+async def generate_response(
+    request: ChatRequest,
+    rag_service: MedicalRAGService = Depends(get_medical_rag_service)
+):
     try:
-        
-        client = Groq(api_key=api_key)
-        
-        # Realizar la consulta a la API de Groq usando Llama 3
-        completion = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",  # Modelo rápido y actualizado
-            messages=[
-                {
-                    "role": "system",
-                    "content": "Eres un asistente médico inteligente de apoyo. Proporciona respuestas precisas, profesionales, empáticas y breves.",
-                },
-                {
-                    "role": "user", 
-                    "content": request.prompt
-                },
-            ],
-            temperature=0.3,
-            max_completion_tokens=1024,
+        result = await rag_service.generate_response(
+            user_id=request.user_id,
+            query=request.prompt,
+            query_type="general",
+            max_results=5,
+            lang=request.lang,
         )
-
-        reply_text = completion.choices[0].message.content
-
-        return {
-            "status": "success",
-            "reply": reply_text
-        }
-
+        return result
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=500, 
-            detail=f"Error al procesar la solicitud con Groq: {str(e)}"
+            detail=f"Error al procesar la solicitud con RAG: {str(e)}"
         )
