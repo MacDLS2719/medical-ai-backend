@@ -14,6 +14,7 @@ from app.services.cochrane_service import CochraneService
 from app.core.database import get_db
 from app.models.user import User
 from app.models.patient import Patient
+from app.models.doctor import Doctor
 from app.core.i18n import normalize_language
 
 router = APIRouter(
@@ -59,9 +60,20 @@ async def medical_search(
                 raise HTTPException(status_code=403, detail="Patient has no registered pathologies to search.")
         else:
             raise HTTPException(status_code=403, detail="Patient has no registered pathologies.")
+    elif user.role == "doctor":
+        doctor = db.query(Doctor).filter(Doctor.user_id == user.id).first()
+        if doctor and doctor.specialty:
+            specialty_str = doctor.specialty
+            if query:
+                query = f"({query}) AND ({specialty_str})"
+            else:
+                query = specialty_str
+        else:
+            if not query:
+                raise HTTPException(status_code=400, detail="Doctor has no specialty and query is empty.")
     else:
         if not query:
-            raise HTTPException(status_code=400, detail="Query cannot be empty for non-patients.")
+            raise HTTPException(status_code=400, detail="Query cannot be empty for non-patients/doctors.")
 
     try:
         result = await service.search(
