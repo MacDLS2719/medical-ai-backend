@@ -15,6 +15,16 @@ from app.models.medical_query_pathology import MedicalQueryPathology
 from app.models.medical_query_source import MedicalQuerySource
 from app.models.medical_response import MedicalResponse
 
+from app.models.medical_appointment import MedicalAppointment
+from app.models.medical_appointment_status_history import MedicalAppointmentStatusHistory
+from app.models.medical_doctor_availability import MedicalDoctorAvailability
+from app.models.medical_doctor_availability_exception import MedicalDoctorAvailabilityException
+
+from app.models.medical_conversation import MedicalConversation
+from app.models.medical_message import MedicalMessage
+from app.models.medical_message_notification import MedicalMessageNotification
+from app.models.medical_notification import MedicalNotification
+
 
 __all__ = [
     "User",
@@ -32,4 +42,14 @@ __all__ = [
     "MedicalQueryPathology",
     "MedicalQuerySource",
     "MedicalResponse",
+
+    "MedicalAppointment",
+    "MedicalAppointmentStatusHistory",
+    "MedicalDoctorAvailability",
+    "MedicalDoctorAvailabilityException",
+
+    "MedicalConversation",
+    "MedicalMessage",
+    "MedicalMessageNotification",
+    "MedicalNotification",
 ]

@@ -8,6 +8,7 @@ from app.routers import (
     medical_notifications,
     profile,
     medical_conversations,
+    medical_appointments,
 )
 
 app = FastAPI(
@@ -41,6 +42,11 @@ app.include_router(
 
 app.include_router(
     medical_conversations.router,
+    prefix="/api"
+)
+
+app.include_router(
+    medical_appointments.router,
     prefix="/api"
 )
 
