@@ -32,6 +32,13 @@ class User(Base):
         index=True
     )
 
+    language: Mapped[str] = mapped_column(
+        String(10),
+        nullable=False,
+        default="es",
+        server_default="es"
+    )
+
     is_active: Mapped[bool] = mapped_column(
         Boolean,
         default=True,
@@ -66,6 +73,6 @@ class User(Base):
     )
 
     medical_queries = relationship(
-    "MedicalQuery",
-    back_populates="user"
-)
+        "MedicalQuery",
+        back_populates="user"
+    )

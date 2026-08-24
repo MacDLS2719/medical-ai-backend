@@ -15,19 +15,32 @@ from app.core.database import get_db
 from app.models.user import User
 from app.models.patient import Patient
 from app.models.doctor import Doctor
+
 from app.core.i18n import normalize_language
+
 
 router = APIRouter(
     prefix="/api/medical",
     tags=["Medical Search"]
 )
 
+
+# ==========================================================
+# SERVICE
+# ==========================================================
+
 def get_medical_search_service() -> MedicalSearchService:
+
     return MedicalSearchService(
         pubmed_service=PubMedService(),
         clinical_trials_service=ClinicalTrialsService(),
         cochrane_service=CochraneService(),
     )
+
+
+# ==========================================================
+# MEDICAL SEARCH
+# ==========================================================
 
 @router.post(
     "/search",
@@ -38,57 +51,229 @@ async def medical_search(
     accept_language: str | None = Header(default=None),
     db: Session = Depends(get_db)
 ):
-    service = get_medical_search_service()
-    target_lang = normalize_language(accept_language)
-    
-    user = db.query(User).filter(User.id == request.user_id).first()
+
+    # ======================================================
+    # 1. BUSCAR USUARIO
+    # ======================================================
+
+    user = db.query(User).filter(
+        User.id == request.user_id
+    ).first()
+
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-        
+
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    # ======================================================
+    # 2. DETERMINAR IDIOMA
+    # ======================================================
+
+    # PRIORIDAD:
+    #
+    # 1. users.language
+    # 2. Accept-Language
+    # 3. español
+
+    target_lang = normalize_language(
+        user.language or accept_language
+    )
+
+    print(
+        "=========================================="
+    )
+
+    print(
+        "MEDICAL SEARCH REQUEST"
+    )
+
+    print(
+        f"USER ID: {user.id}"
+    )
+
+    print(
+        f"ROLE: {user.role}"
+    )
+
+    print(
+        f"USER LANGUAGE: {user.language}"
+    )
+
+    print(
+        f"HEADER LANGUAGE: {accept_language}"
+    )
+
+    print(
+        f"TARGET LANGUAGE: {target_lang}"
+    )
+
+    print(
+        "=========================================="
+    )
+
+    # ======================================================
+    # 3. CONSULTA
+    # ======================================================
+
     query = request.query
+
+    # ======================================================
+    # 4. PACIENTE
+    # ======================================================
+
     if user.role == "patient":
-        patient = db.query(Patient).filter(Patient.user_id == user.id).first()
-        if patient and patient.patient_pathologies:
-            pathologies = [pp.pathology.name for pp in patient.patient_pathologies if pp.pathology]
+
+        patient = db.query(
+            Patient
+        ).filter(
+            Patient.user_id == user.id
+        ).first()
+
+        if (
+            patient
+            and patient.patient_pathologies
+        ):
+
+            pathologies = [
+                pp.pathology.name
+                for pp in patient.patient_pathologies
+                if pp.pathology
+            ]
+
             if pathologies:
-                pathology_str = " OR ".join(pathologies)
+
+                pathology_str = " OR ".join(
+                    pathologies
+                )
+
                 if query:
-                    query = f"({query}) AND ({pathology_str})"
+
+                    query = (
+                        f"({query}) "
+                        f"AND "
+                        f"({pathology_str})"
+                    )
+
                 else:
+
                     query = pathology_str
+
             else:
-                raise HTTPException(status_code=403, detail="Patient has no registered pathologies to search.")
+
+                raise HTTPException(
+                    status_code=403,
+                    detail=(
+                        "Patient has no registered "
+                        "pathologies to search."
+                    )
+                )
+
         else:
-            raise HTTPException(status_code=403, detail="Patient has no registered pathologies.")
+
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "Patient has no registered "
+                    "pathologies."
+                )
+            )
+
+    # ======================================================
+    # 5. MÉDICO
+    # ======================================================
+
     elif user.role == "doctor":
-        doctor = db.query(Doctor).filter(Doctor.user_id == user.id).first()
+
+        doctor = db.query(
+            Doctor
+        ).filter(
+            Doctor.user_id == user.id
+        ).first()
+
         if doctor and doctor.specialty:
+
             specialty_str = doctor.specialty
+
             if query:
-                query = f"({query}) AND ({specialty_str})"
+
+                query = (
+                    f"({query}) "
+                    f"AND "
+                    f"({specialty_str})"
+                )
+
             else:
+
                 query = specialty_str
+
         else:
+
             if not query:
-                raise HTTPException(status_code=400, detail="Doctor has no specialty and query is empty.")
+
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Doctor has no specialty "
+                        "and query is empty."
+                    )
+                )
+
+    # ======================================================
+    # 6. OTROS USUARIOS
+    # ======================================================
+
     else:
+
         if not query:
-            raise HTTPException(status_code=400, detail="Query cannot be empty for non-patients/doctors.")
+
+            raise HTTPException(
+                status_code=400,
+                detail="Query cannot be empty."
+            )
+
+    # ======================================================
+    # 7. EJECUTAR BÚSQUEDA
+    # ======================================================
 
     try:
+
+        service = get_medical_search_service()
+
         result = await service.search(
+
             query=query,
+
             max_results=request.max_results,
+
             target_lang=target_lang
+
         )
-        # Note: Depending on service.search return type, you may need to wrap it in a dictionary if it isn't already a dict/model that matches MedicalSearchResponse
-        # e.g., return {"results": result} if result is a list
-        if isinstance(result, list):
-            return {"results": result}
+
         return result
+
     except Exception as e:
-        print(f"Error en búsqueda médica: {e}")
+
+        print(
+            "=========================================="
+        )
+
+        print(
+            f"ERROR EN MEDICAL SEARCH: {e}"
+        )
+
+        print(
+            "=========================================="
+        )
+
         raise HTTPException(
+
             status_code=500,
-            detail="No fue posible realizar la búsqueda médica."
-        )
+
+            detail=(
+                "No fue posible realizar "
+                "la búsqueda médica."
+            )
+
+        )
