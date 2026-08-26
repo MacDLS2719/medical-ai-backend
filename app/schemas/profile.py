@@ -10,6 +10,10 @@ class ProfileUpdate(BaseModel):
     birth_date: Optional[date] = None
     # Doctor fields
     specialty: Optional[str] = None
+    # Location fields
+    address: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
 
 class ProfileResponse(BaseModel):
     user_id: int
@@ -25,6 +29,10 @@ class ProfileResponse(BaseModel):
     birth_date: Optional[date] = None
     # Doctor fields
     specialty: Optional[str] = None
+    # Location fields
+    address: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
 
     class Config:
         from_attributes = True

@@ -29,6 +29,9 @@ def get_profile(
                 "document_number": patient.document_number,
                 "gender": patient.gender,
                 "birth_date": patient.birth_date,
+                "address": patient.address,
+                "latitude": patient.latitude,
+                "longitude": patient.longitude,
             })
     elif current_user.role == "doctor":
         doctor = db.query(Doctor).filter(Doctor.user_id == current_user.id).first()
@@ -38,6 +41,9 @@ def get_profile(
                 "last_name": doctor.last_name,
                 "medical_license": doctor.medical_license,
                 "specialty": doctor.specialty,
+                "address": doctor.address,
+                "latitude": doctor.latitude,
+                "longitude": doctor.longitude,
             })
     
     if "first_name" not in profile_data:
@@ -65,6 +71,12 @@ def update_profile(
             patient.gender = profile_update.gender
         if profile_update.birth_date is not None:
             patient.birth_date = profile_update.birth_date
+        if profile_update.address is not None:
+            patient.address = profile_update.address
+        if profile_update.latitude is not None:
+            patient.latitude = profile_update.latitude
+        if profile_update.longitude is not None:
+            patient.longitude = profile_update.longitude
 
     elif current_user.role == "doctor":
         doctor = db.query(Doctor).filter(Doctor.user_id == current_user.id).first()
@@ -77,6 +89,12 @@ def update_profile(
             doctor.last_name = profile_update.last_name
         if profile_update.specialty is not None:
             doctor.specialty = profile_update.specialty
+        if profile_update.address is not None:
+            doctor.address = profile_update.address
+        if profile_update.latitude is not None:
+            doctor.latitude = profile_update.latitude
+        if profile_update.longitude is not None:
+            doctor.longitude = profile_update.longitude
             
     db.commit()
     

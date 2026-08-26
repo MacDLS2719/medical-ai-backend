@@ -3,9 +3,11 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import nullslast
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.models.medical_doctor_availability import MedicalDoctorAvailability
 from app.services.medical_appointment_service import (
     MedicalAppointmentService
 )
@@ -23,10 +25,13 @@ router = APIRouter(
 
 class AvailabilityCreate(BaseModel):
     doctor_id: int
-    day_of_week: int
+    day_of_week: Optional[int] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
     start_time: time
     end_time: time
     slot_duration: int = 30
+    location: Optional[str] = None
 
 
 class ExceptionCreate(BaseModel):
@@ -43,7 +48,6 @@ class AppointmentCreate(BaseModel):
     doctor_id: int
     appointment_date: date
     appointment_time: time
-    location: Optional[str] = None
 
 
 class AppointmentStatusUpdate(BaseModel):
@@ -69,10 +73,22 @@ def create_availability(
     db: Session = Depends(get_db)
 ):
 
-    if data.day_of_week < 0 or data.day_of_week > 6:
+    if data.day_of_week is not None and (data.day_of_week < 0 or data.day_of_week > 6):
         raise HTTPException(
             status_code=400,
             detail="day_of_week debe estar entre 0 y 6"
+        )
+
+    if data.start_date and data.end_date and data.start_date > data.end_date:
+        raise HTTPException(
+            status_code=400,
+            detail="La fecha de inicio debe ser menor o igual a la fecha de fin"
+        )
+
+    if data.day_of_week is None and (data.start_date is None or data.end_date is None):
+        raise HTTPException(
+            status_code=400,
+            detail="Debe especificar day_of_week o un rango de fechas (start_date, end_date)"
         )
 
     if data.start_time >= data.end_time:
@@ -91,12 +107,74 @@ def create_availability(
         db=db,
         doctor_id=data.doctor_id,
         day_of_week=data.day_of_week,
+        start_date=data.start_date,
+        end_date=data.end_date,
         start_time=data.start_time,
         end_time=data.end_time,
-        slot_duration=data.slot_duration
+        slot_duration=data.slot_duration,
+        location=data.location
     )
 
     return availability
+
+
+# ==========================================================
+# LISTAR MÉDICOS CON DISPONIBILIDAD
+# ==========================================================
+
+@router.get(
+    "/doctors"
+)
+def get_doctors_with_availability(
+    db: Session = Depends(get_db)
+):
+    from app.models.doctor import Doctor
+    from app.models.user import User
+
+    doctors = db.query(Doctor).join(
+        User, Doctor.user_id == User.id
+    ).filter(
+        Doctor.is_active == True,
+        User.is_active == True
+    ).order_by(Doctor.first_name).all()
+
+    result = []
+    for doctor in doctors:
+        availabilities = db.query(
+            MedicalDoctorAvailability
+        ).filter(
+            MedicalDoctorAvailability.doctor_id == doctor.user_id,
+            MedicalDoctorAvailability.is_active == True
+        ).order_by(
+            nullslast(MedicalDoctorAvailability.start_date),
+            nullslast(MedicalDoctorAvailability.day_of_week),
+            MedicalDoctorAvailability.start_time
+        ).all()
+
+        avail_list = []
+        for a in availabilities:
+            avail_list.append({
+                "id": a.id,
+                "day_of_week": a.day_of_week,
+                "start_date": str(a.start_date) if a.start_date else None,
+                "end_date": str(a.end_date) if a.end_date else None,
+                "start_time": str(a.start_time)[:5] if a.start_time else None,
+                "end_time": str(a.end_time)[:5] if a.end_time else None,
+                "slot_duration": a.slot_duration,
+            })
+
+        result.append({
+            "user_id": doctor.user_id,
+            "first_name": doctor.first_name,
+            "last_name": doctor.last_name,
+            "specialty": doctor.specialty,
+            "latitude": doctor.latitude,
+            "longitude": doctor.longitude,
+            "address": doctor.address,
+            "availabilities": avail_list,
+        })
+
+    return result
 
 
 # ==========================================================
@@ -252,8 +330,7 @@ def create_appointment(
         patient_id=data.patient_id,
         doctor_id=data.doctor_id,
         appointment_date=data.appointment_date,
-        appointment_time=data.appointment_time,
-        location=data.location
+        appointment_time=data.appointment_time
     )
 
     if not appointment:

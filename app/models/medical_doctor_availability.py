@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Time, Boolean, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, Time, Boolean, DateTime, ForeignKey, Date, String
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -24,7 +24,19 @@ class MedicalDoctorAvailability(Base):
 
     day_of_week = Column(
         Integer,
-        nullable=False,
+        nullable=True,
+        index=True
+    )
+
+    start_date = Column(
+        Date,
+        nullable=True,
+        index=True
+    )
+
+    end_date = Column(
+        Date,
+        nullable=True,
         index=True
     )
 
@@ -42,6 +54,11 @@ class MedicalDoctorAvailability(Base):
         Integer,
         nullable=False,
         default=30
+    )
+
+    address = Column(
+        String(255),
+        nullable=True
     )
 
     is_active = Column(

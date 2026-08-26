@@ -26,18 +26,24 @@ class MedicalAppointmentService:
     def create_availability(
         db: Session,
         doctor_id: int,
-        day_of_week: int,
-        start_time: time,
-        end_time: time,
-        slot_duration: int = 30
+        day_of_week: int = None,
+        start_date: date = None,
+        end_date: date = None,
+        start_time: time = None,
+        end_time: time = None,
+        slot_duration: int = 30,
+        location: str = None
     ):
 
         availability = MedicalDoctorAvailability(
             doctor_id=doctor_id,
             day_of_week=day_of_week,
+            start_date=start_date,
+            end_date=end_date,
             start_time=start_time,
             end_time=end_time,
             slot_duration=slot_duration,
+            address=location,
             is_active=True
         )
 
@@ -169,8 +175,13 @@ class MedicalAppointmentService:
             MedicalDoctorAvailability
         ).filter(
             MedicalDoctorAvailability.doctor_id == doctor_id,
-            MedicalDoctorAvailability.day_of_week == day_of_week,
-            MedicalDoctorAvailability.is_active == True
+            MedicalDoctorAvailability.is_active == True,
+            (
+                MedicalDoctorAvailability.day_of_week == day_of_week
+            ) | (
+                (MedicalDoctorAvailability.start_date <= appointment_date) &
+                (MedicalDoctorAvailability.end_date >= appointment_date)
+            )
         ).order_by(
             MedicalDoctorAvailability.start_time
         ).all()
@@ -274,7 +285,8 @@ class MedicalAppointmentService:
                     slots.append({
                         "date": appointment_date,
                         "time": slot_start,
-                        "available": True
+                        "available": True,
+                        "location": availability.address
                     })
 
                 current += duration
@@ -291,8 +303,7 @@ class MedicalAppointmentService:
         patient_id: int,
         doctor_id: int,
         appointment_date: date,
-        appointment_time: time,
-        location: str = None
+        appointment_time: time
     ):
 
         # ------------------------------------------------------
@@ -327,7 +338,7 @@ class MedicalAppointmentService:
             appointment_date=appointment_date,
             appointment_time=appointment_time,
             status="scheduled",
-            location=location
+            location=requested_slot.get("location")
         )
 
         db.add(appointment)
