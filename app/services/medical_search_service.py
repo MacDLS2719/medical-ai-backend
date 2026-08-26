@@ -704,13 +704,22 @@ class MedicalSearchService:
         )
 
         # ======================================================
-        # TRADUCCIÓN
+        # TRADUCCIÓN (OPCIONAL - NO BLOQUEA RESULTADOS)
         # ======================================================
+
+        translation_status = {
+            "attempted": False,
+            "successful": False,
+            "message": "",
+            "language": target_lang
+        }
 
         if (
             target_lang != "en"
             and final_results
         ):
+
+            translation_status["attempted"] = True
 
             print(
                 "=========================================="
@@ -739,8 +748,11 @@ class MedicalSearchService:
                 "=========================================="
             )
 
+            successful_translations = 0
+            failed_translations = 0
+
             # --------------------------------------------------
-            # PROCESAMIENTO SECUENCIAL
+            # PROCESAMIENTO SECUENCIAL CON TIMEOUT
             #
             # Esto es intencional para reducir consumo
             # de memoria/CPU en Render.
@@ -756,6 +768,8 @@ class MedicalSearchService:
                     f"{index}/"
                     f"{len(final_results)}"
                 )
+
+                doc_translated = False
 
                 # ==================================================
                 # TÍTULO
@@ -777,35 +791,42 @@ class MedicalSearchService:
                         "  -> Traduciendo título..."
                     )
 
-                    translated_title = (
-                        await self.translate_text(
-                            text=title_to_translate,
-                            source_lang="en",
-                            target_lang=target_lang,
+                    try:
+                        translated_title = (
+                            await self.translate_text(
+                                text=title_to_translate,
+                                source_lang="en",
+                                target_lang=target_lang,
+                            )
                         )
-                    )
 
-                    if translated_title:
+                        if translated_title and translated_title != original_title:
 
-                        # ------------------------------------------
-                        # Si el título supera el límite,
-                        # conservamos el resto.
-                        # ------------------------------------------
+                            # ------------------------------------------
+                            # Si el título supera el límite,
+                            # conservamos el resto.
+                            # ------------------------------------------
 
-                        if len(original_title) > self.MAX_TITLE_CHARS:
+                            if len(original_title) > self.MAX_TITLE_CHARS:
 
-                            doc.title = (
-                                translated_title
-                                + original_title[
-                                    self.MAX_TITLE_CHARS:
-                                ]
-                            )
+                                doc.title = (
+                                    translated_title
+                                    + original_title[
+                                        self.MAX_TITLE_CHARS:
+                                    ]
+                                )
 
-                        else:
+                            else:
 
-                            doc.title = (
-                                translated_title
-                            )
+                                doc.title = (
+                                    translated_title
+                                )
+
+                            doc_translated = True
+
+                    except Exception as e:
+                        print(f"  ⚠️ Error traduciendo título: {e}")
+                        failed_translations += 1
 
                 # ==================================================
                 # ABSTRACT
@@ -833,31 +854,41 @@ class MedicalSearchService:
                             "palabras del abstract..."
                         )
 
-                        translated_abstract = (
-                            await self.translate_text(
-                                text=abstract_to_translate,
-                                source_lang="en",
-                                target_lang=target_lang,
+                        try:
+                            translated_abstract = (
+                                await self.translate_text(
+                                    text=abstract_to_translate,
+                                    source_lang="en",
+                                    target_lang=target_lang,
+                                )
                             )
-                        )
 
-                        if translated_abstract:
+                            if translated_abstract and translated_abstract != abstract_to_translate:
 
-                            # --------------------------------------
-                            # IMPORTANTE:
-                            #
-                            # NO reemplazamos todo el abstract.
-                            # Traducimos únicamente las primeras
-                            # 40 palabras y dejamos el resto
-                            # original.
-                            # --------------------------------------
+                                # --------------------------------------
+                                # IMPORTANTE:
+                                #
+                                # NO reemplazamos todo el abstract.
+                                # Traducimos únicamente las primeras
+                                # 40 palabras y dejamos el resto
+                                # original.
+                                # --------------------------------------
 
-                            remaining_words = words[self.MAX_ABSTRACT_WORDS:]
-                            doc.abstract = (
-                                translated_abstract
-                                + " "
-                                + " ".join(remaining_words)
-                            )
+                                remaining_words = words[self.MAX_ABSTRACT_WORDS:]
+                                doc.abstract = (
+                                    translated_abstract
+                                    + " "
+                                    + " ".join(remaining_words)
+                                )
+
+                                doc_translated = True
+
+                        except Exception as e:
+                            print(f"  ⚠️ Error traduciendo abstract: {e}")
+                            failed_translations += 1
+
+                if doc_translated:
+                    successful_translations += 1
 
                 # --------------------------------------------------
                 # Pequeña pausa para reducir presión sobre CPU
@@ -865,12 +896,25 @@ class MedicalSearchService:
 
                 await asyncio.sleep(0.05)
 
+            # --------------------------------------------------
+            # ESTADO FINAL DE TRADUCCIÓN
+            # --------------------------------------------------
+
+            translation_status["successful"] = successful_translations > 0
+
+            if successful_translations == len(final_results):
+                translation_status["message"] = "Todos los documentos fueron traducidos exitosamente."
+            elif successful_translations > 0:
+                translation_status["message"] = f"Se tradujeron {successful_translations} de {len(final_results)} documentos. Algunos resultados pueden estar en inglés."
+            else:
+                translation_status["message"] = "No fue posible traducir los documentos. Los resultados se muestran en inglés debido a problemas con el servicio de traducción."
+
             print(
                 "=========================================="
             )
 
             print(
-                "TRADUCCIÓN COMPLETADA"
+                f"TRADUCCIÓN COMPLETADA: {successful_translations}/{len(final_results)} exitosas"
             )
 
             print(
@@ -879,9 +923,8 @@ class MedicalSearchService:
 
         else:
 
-            print(
-                "Translation not required."
-            )
+            translation_status["message"] = "No se requirió traducción (idioma original: inglés)."
+            print("Translation not required.")
 
         # ======================================================
         # RESULTADO FINAL
@@ -923,6 +966,8 @@ class MedicalSearchService:
             "total_results": len(
                 final_results
             ),
+
+            "translation_status": translation_status,
 
             "sources": {
 

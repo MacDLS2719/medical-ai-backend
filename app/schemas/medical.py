@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 class NormalizedDocument(BaseModel):
     source_id: str          # Ej: "34567890" (PMID)
@@ -16,5 +16,21 @@ class MedicalSearchRequest(BaseModel):
     max_results: int = 10
     user_id: int
 
+class TranslationStatus(BaseModel):
+    attempted: bool
+    successful: bool
+    message: str
+    language: str
+
+class SourceResults(BaseModel):
+    count: int
+    results: List[NormalizedDocument]
+
 class MedicalSearchResponse(BaseModel):
-    results: List[NormalizedDocument]
+    query: str
+    search_query: str
+    target_lang: str
+    total_results: int
+    translation_status: TranslationStatus
+    sources: Dict[str, SourceResults]
+    results: List[NormalizedDocument]

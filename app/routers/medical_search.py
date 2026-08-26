@@ -39,12 +39,24 @@ def get_medical_search_service() -> MedicalSearchService:
 
 
 # ==========================================================
+# SERVICE
+# ==========================================================
+
+def get_medical_search_service() -> MedicalSearchService:
+
+    return MedicalSearchService(
+        pubmed_service=PubMedService(),
+        clinical_trials_service=ClinicalTrialsService(),
+        cochrane_service=CochraneService(),
+    )
+
+
+# ==========================================================
 # MEDICAL SEARCH
 # ==========================================================
 
 @router.post(
-    "/search",
-    response_model=MedicalSearchResponse
+    "/search"
 )
 async def medical_search(
     request: MedicalSearchRequest,
