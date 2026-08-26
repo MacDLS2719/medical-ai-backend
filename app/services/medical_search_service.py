@@ -19,16 +19,17 @@ class MedicalSearchService:
     # ==========================================================
 
     # Cantidad máxima de resultados que devolvemos al frontend
-    MAX_FINAL_RESULTS = 10
+    # Eliminado límite para mostrar todos los resultados encontrados
+    MAX_FINAL_RESULTS = 999  # Practicamente sin límite
 
     # Cantidad máxima que solicitamos a cada fuente
-    SOURCE_RESULTS = 10
+    SOURCE_RESULTS = 20  # Aumentado para obtener más resultados
 
-    # SOLO esta cantidad del abstract será enviada al traductor
-    MAX_ABSTRACT_CHARS = 50
+    # SOLO 40 palabras del abstract serán enviadas al traductor
+    MAX_ABSTRACT_WORDS = 40
 
-    # Límite de seguridad para títulos
-    MAX_TITLE_CHARS = 500
+    # Límite de seguridad para títulos (traducir completo)
+    MAX_TITLE_CHARS = 1000
 
     # ==========================================================
     # STOPWORDS
@@ -673,16 +674,14 @@ class MedicalSearchService:
         )
 
         # ======================================================
-        # TOMAR LOS 10 MÁS RECIENTES
+        # TOMAR TODOS LOS RESULTADOS (sin límite)
         # ======================================================
 
-        final_results = all_results[
-            :self.MAX_FINAL_RESULTS
-        ]
+        final_results = all_results  # Ya ordenados por fecha
 
         print(
             f"RESULTADOS FINALES: "
-            f"{len(final_results)}"
+            f"{len(final_results)} (todos los resultados encontrados)"
         )
 
         # ======================================================
@@ -704,9 +703,9 @@ class MedicalSearchService:
             )
 
             print(
-                "SOLO TITULOS + "
-                f"PRIMEROS {self.MAX_ABSTRACT_CHARS} "
-                "CARACTERES DEL ABSTRACT"
+                "TÍTULOS COMPLETOS + "
+                f"PRIMEROS {self.MAX_ABSTRACT_WORDS} "
+                "PALABRAS DEL ABSTRACT"
             )
 
             print(
@@ -800,21 +799,19 @@ class MedicalSearchService:
                     )
 
                     # ----------------------------------------------
-                    # SOLO PRIMEROS 50 CARACTERES
+                    # SOLO PRIMERAS 40 PALABRAS
                     # ----------------------------------------------
 
-                    abstract_to_translate = (
-                        original_abstract[
-                            :self.MAX_ABSTRACT_CHARS
-                        ]
-                    )
+                    words = original_abstract.split()
+                    abstract_words_to_translate = words[:self.MAX_ABSTRACT_WORDS]
+                    abstract_to_translate = " ".join(abstract_words_to_translate)
 
                     if abstract_to_translate:
 
                         print(
-                            "  -> Traduciendo primeros "
-                            f"{self.MAX_ABSTRACT_CHARS} "
-                            "caracteres del abstract..."
+                            "  -> Traduciendo primeras "
+                            f"{self.MAX_ABSTRACT_WORDS} "
+                            "palabras del abstract..."
                         )
 
                         translated_abstract = (
@@ -831,17 +828,16 @@ class MedicalSearchService:
                             # IMPORTANTE:
                             #
                             # NO reemplazamos todo el abstract.
-                            #
-                            # Traducimos únicamente los primeros
-                            # 50 caracteres y dejamos el resto
+                            # Traducimos únicamente las primeras
+                            # 40 palabras y dejamos el resto
                             # original.
                             # --------------------------------------
 
+                            remaining_words = words[self.MAX_ABSTRACT_WORDS:]
                             doc.abstract = (
                                 translated_abstract
-                                + original_abstract[
-                                    self.MAX_ABSTRACT_CHARS:
-                                ]
+                                + " "
+                                + " ".join(remaining_words)
                             )
 
                 # --------------------------------------------------

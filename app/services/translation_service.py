@@ -72,19 +72,26 @@ class TranslationService:
                 print(f"Failed to initialize DeepL: {e}")
                 self.translation_service = "google"
 
-        if self.translation_service == "google" and settings.GOOGLE_TRANSLATE_API_KEY:
-            try:
+        # Siempre inicializar Google Translate (con o sin API key)
+        try:
+            if settings.GOOGLE_TRANSLATE_API_KEY:
                 self._google_translator = GoogleTranslator(
                     source="auto",
                     target="es",
                     api_key=settings.GOOGLE_TRANSLATE_API_KEY
                 )
-                print("Google translator initialized")
-            except Exception as e:
-                print(f"Failed to initialize Google Translate: {e}")
-                # Fallback to free Google Translate
+                print("Google translator initialized with API key")
+            else:
                 self._google_translator = GoogleTranslator(source="auto", target="es")
-                print("Using free Google Translate as fallback")
+                print("Google translator initialized (free version)")
+        except Exception as e:
+            print(f"Failed to initialize Google Translate: {e}")
+            # Intentar versión gratuita
+            try:
+                self._google_translator = GoogleTranslator(source="auto", target="es")
+                print("Google translator initialized (free version fallback)")
+            except Exception as e2:
+                print(f"Failed to initialize Google Translate free version: {e2}")
 
     # ==========================================================
     # ASEGURAR MODELOS
@@ -423,8 +430,9 @@ class TranslationService:
     ) -> str:
 
         try:
-            # Prioridad: DeepL -> Google -> Libre
+            # Prioridad: DeepL -> Google
             if self.translation_service == "deepl" and self._deepl_translator:
+                print("Usando DeepL para traducción")
                 return await asyncio.to_thread(
                     self._deepl_translator.translate,
                     text,
@@ -432,6 +440,7 @@ class TranslationService:
                     target=target
                 )
             elif self._google_translator:
+                print("Usando Google Translate para traducción")
                 return await asyncio.to_thread(
                     self._google_translator.translate,
                     text,
@@ -440,6 +449,7 @@ class TranslationService:
                 )
             else:
                 # Fallback a Google Translate gratuito
+                print("Creando Google Translator temporal como fallback")
                 translator = GoogleTranslator(source=source, target=target)
                 return await asyncio.to_thread(
                     translator.translate,
