@@ -18,16 +18,13 @@ class MedicalSearchService:
     # CONFIGURACIÓN
     # ==========================================================
 
-    # Cantidad máxima de documentos que se traducen.
-    #
-    # Los demás documentos siguen llegando al frontend,
-    # pero no gastamos memoria/CPU traduciendo todos.
-    MAX_TRANSLATION_DOCUMENTS = 5
+    # Queremos devolver mínimo/hasta 10 resultados.
+    MAX_FINAL_RESULTS = 10
 
-    # Máximo de caracteres para abstracts.
+    # Tamaño máximo del abstract enviado al traductor.
     MAX_ABSTRACT_CHARS = 1800
 
-    # Máximo de caracteres para títulos.
+    # Tamaño máximo del título.
     MAX_TITLE_CHARS = 500
 
     # ==========================================================
@@ -148,9 +145,7 @@ class MedicalSearchService:
         cochrane_service: CochraneService,
     ):
 
-        self.pubmed_service = (
-            pubmed_service
-        )
+        self.pubmed_service = pubmed_service
 
         self.clinical_trials_service = (
             clinical_trials_service
@@ -160,7 +155,6 @@ class MedicalSearchService:
             cochrane_service
         )
 
-        # Una instancia del servicio de traducción.
         self.translation_service = (
             TranslationService()
         )
@@ -186,10 +180,10 @@ class MedicalSearchService:
 
         language = language.split("-")[0]
 
-        if language not in [
+        if language not in (
             "es",
             "en",
-        ]:
+        ):
 
             return "es"
 
@@ -287,15 +281,14 @@ class MedicalSearchService:
 
         try:
 
-            translated = (
-                await self.translation_service.translate(
+            return await (
+                self.translation_service
+                .translate(
                     text=text,
                     source=source_lang,
                     target=target_lang,
                 )
             )
-
-            return translated
 
         except Exception as e:
 
@@ -384,7 +377,7 @@ class MedicalSearchService:
         return filtered
 
     # ==========================================================
-    # ORDENAMIENTO
+    # ORDENAR POR FECHA
     # ==========================================================
 
     @classmethod
@@ -410,7 +403,7 @@ class MedicalSearchService:
     async def search(
         self,
         query: str,
-        max_results: int = 5,
+        max_results: int = 10,
         target_lang: str = "es"
     ) -> dict:
 
@@ -421,12 +414,15 @@ class MedicalSearchService:
         )
 
         # ------------------------------------------------------
-        # LIMITAR RESULTADOS
+        # SIEMPRE BUSCAR HASTA 10 POR FUENTE
         # ------------------------------------------------------
 
-        max_results = max(
-            1,
-            min(max_results, 5)
+        source_limit = max(
+            10,
+            min(
+                max_results,
+                10
+            )
         )
 
         print(
@@ -446,7 +442,11 @@ class MedicalSearchService:
         )
 
         print(
-            f"MAX RESULTS: {max_results}"
+            "RESULTADOS POR FUENTE: 10"
+        )
+
+        print(
+            "RESULTADOS FINALES: 10"
         )
 
         print(
@@ -502,7 +502,7 @@ class MedicalSearchService:
             )
 
         # ======================================================
-        # CONSULTAR FUENTES EN PARALELO
+        # CONSULTAR LAS 3 FUENTES EN PARALELO
         # ======================================================
 
         results = await asyncio.gather(
@@ -510,19 +510,19 @@ class MedicalSearchService:
             self.pubmed_service
             .search_and_fetch(
                 search_query,
-                max_results
+                source_limit,
             ),
 
             self.clinical_trials_service
             .search_and_fetch(
                 search_query,
-                max_results
+                source_limit,
             ),
 
             self.cochrane_service
             .search_and_fetch(
                 search_query,
-                max_results
+                source_limit,
             ),
 
             return_exceptions=True,
@@ -573,7 +573,7 @@ class MedicalSearchService:
         )
 
         # ======================================================
-        # ORDENAR FUENTES
+        # ORDENAR CADA FUENTE
         # ======================================================
 
         pubmed_results.sort(
@@ -611,19 +611,39 @@ class MedicalSearchService:
         )
 
         # ======================================================
-        # TRADUCIR RESULTADOS
+        # TOMAR 10 RESULTADOS
+        # ======================================================
+
+        final_results = all_results[
+            :self.MAX_FINAL_RESULTS
+        ]
+
+        print(
+            "=========================================="
+        )
+
+        print(
+            f"RESULTADOS OBTENIDOS: "
+            f"{len(all_results)}"
+        )
+
+        print(
+            f"RESULTADOS FINALES: "
+            f"{len(final_results)}"
+        )
+
+        print(
+            "=========================================="
+        )
+
+        # ======================================================
+        # TRADUCIR LOS 10 RESULTADOS
         # ======================================================
 
         if (
             target_lang != "en"
-            and all_results
+            and final_results
         ):
-
-            documents_to_translate = (
-                all_results[
-                    :self.MAX_TRANSLATION_DOCUMENTS
-                ]
-            )
 
             print(
                 "=========================================="
@@ -631,8 +651,7 @@ class MedicalSearchService:
 
             print(
                 f"TRANSLATING "
-                f"{len(documents_to_translate)} "
-                f"OF {len(all_results)} DOCUMENTS"
+                f"{len(final_results)} DOCUMENTS"
             )
 
             print(
@@ -648,22 +667,22 @@ class MedicalSearchService:
             )
 
             # --------------------------------------------------
-            # IMPORTANTE:
+            # SECUENCIAL
             #
-            # Traducción SECUENCIAL.
-            #
-            # No usamos asyncio.gather() aquí.
+            # TranslationService ya tiene Semaphore(1).
+            # Aquí también mantenemos procesamiento secuencial
+            # para reducir presión sobre Render.
             # --------------------------------------------------
 
             for index, doc in enumerate(
-                documents_to_translate,
+                final_results,
                 start=1
             ):
 
                 print(
-                    f"Translating document "
+                    f"TRADUCIENDO DOCUMENTO "
                     f"{index}/"
-                    f"{len(documents_to_translate)}"
+                    f"{len(final_results)}"
                 )
 
                 # ==============================================
@@ -690,17 +709,10 @@ class MedicalSearchService:
                         )
                     )
 
-                    if (
-                        translated_title
-                        != title_to_translate
-                    ):
+                    if translated_title:
 
                         doc.title = (
                             translated_title
-                        )
-
-                        print(
-                            "Title translated successfully."
                         )
 
                 # ==============================================
@@ -727,27 +739,29 @@ class MedicalSearchService:
                         )
                     )
 
-                    if (
-                        translated_abstract
-                        != abstract_to_translate
-                    ):
+                    if translated_abstract:
 
                         doc.abstract = (
                             translated_abstract
                         )
 
-                        print(
-                            "Abstract translated successfully."
-                        )
-
                 # ------------------------------------------------
-                # Pequeña pausa para no saturar CPU.
+                # Pequeña pausa
                 # ------------------------------------------------
 
                 await asyncio.sleep(0.05)
 
             print(
-                "Document translation completed."
+                "=========================================="
+            )
+
+            print(
+                "TRADUCCIÓN COMPLETADA"
+            )
+
+            print(
+                "=========================================="
+
             )
 
         else:
@@ -757,7 +771,7 @@ class MedicalSearchService:
             )
 
         # ======================================================
-        # FINAL
+        # RESULTADO FINAL
         # ======================================================
 
         print(
@@ -773,8 +787,8 @@ class MedicalSearchService:
         )
 
         print(
-            f"Total documents: "
-            f"{len(all_results)}"
+            f"Total documents returned: "
+            f"{len(final_results)}"
         )
 
         print(
@@ -793,7 +807,9 @@ class MedicalSearchService:
 
             "target_lang": target_lang,
 
-            "total_results": len(all_results),
+            "total_results": len(
+                final_results
+            ),
 
             "sources": {
 
@@ -829,7 +845,7 @@ class MedicalSearchService:
                 },
             },
 
-            "results": all_results,
+            "results": final_results,
         }
 
     # ==========================================================

@@ -6,31 +6,25 @@ import argostranslate.translate
 
 
 class TranslationService:
+
     # ==========================================================
     # CONFIGURACIÓN
     # ==========================================================
 
-    # Solo permitimos una traducción de Argos a la vez.
-    # Esto evita que varias búsquedas simultáneas carguen
-    # procesamiento de traducción al mismo tiempo.
     MAX_CONCURRENT_TRANSLATIONS = 1
 
-    # Limitar el tamaño del texto enviado al modelo.
-    # El abstract completo puede ser bastante grande.
+    # Para evitar enviar textos enormes al modelo.
     MAX_TEXT_CHARS = 1800
 
     # ==========================================================
     # PATRONES
     # ==========================================================
 
-    # Palabras booleanas y paréntesis:
-    # se preservan y no se traducen.
     BOOLEAN_SPLIT_PATTERN = re.compile(
         r"(\(|\)|\bAND\b|\bOR\b|\bNOT\b)",
         re.IGNORECASE,
     )
 
-    # Detecta salidas degeneradas.
     REPETITION_PATTERN = re.compile(
         r"(.{2,30}?)\1{4,}"
     )
@@ -40,19 +34,19 @@ class TranslationService:
     # ==========================================================
 
     def __init__(self):
+
         self._ready = False
 
-        # Evita que dos requests intenten inicializar
-        # Argos al mismo tiempo.
+        # Evita inicializaciones simultáneas.
         self._lock = asyncio.Lock()
 
-        # Evita traducciones simultáneas.
+        # Solo una traducción a la vez.
         self._translation_semaphore = asyncio.Semaphore(
             self.MAX_CONCURRENT_TRANSLATIONS
         )
 
     # ==========================================================
-    # ASEGURAR ARGOS LISTO
+    # ASEGURAR MODELOS
     # ==========================================================
 
     async def _ensure_ready(self):
@@ -65,19 +59,20 @@ class TranslationService:
             if self._ready:
                 return
 
-            print("==========================================")
-            print("Inicializando Argos Translate...")
-            print("==========================================")
+            print(
+                "=========================================="
+            )
+            print(
+                "INICIALIZANDO ARGOS TRANSLATE"
+            )
+            print(
+                "=========================================="
+            )
 
             try:
 
-                # IMPORTANTE:
-                #
-                # No descargamos modelos en cada request.
-                # Primero intentamos utilizar los modelos que
-                # ya estén instalados.
                 await asyncio.to_thread(
-                    self._check_installed_models
+                    self._install_missing_models
                 )
 
                 self._ready = True
@@ -89,71 +84,26 @@ class TranslationService:
             except Exception as e:
 
                 print(
-                    f"Error inicializando Argos Translate: {e}"
+                    f"Error preparando Argos Translate: {e}"
                 )
 
                 raise
 
     # ==========================================================
-    # VERIFICAR MODELOS INSTALADOS
+    # INSTALAR MODELOS FALTANTES
     # ==========================================================
 
     @staticmethod
-    def _check_installed_models():
+    def _install_missing_models():
 
-        required_models = {
+        required_models = [
             ("en", "es"),
             ("es", "en"),
-        }
+        ]
 
-        installed_models = {
-            (
-                package.from_code,
-                package.to_code,
-            )
-            for package in (
-                argostranslate.package.get_installed_packages()
-            )
-        }
-
-        missing_models = (
-            required_models - installed_models
-        )
-
-        if missing_models:
-
-            print(
-                "ADVERTENCIA: Faltan modelos de Argos:"
-            )
-
-            for source, target in missing_models:
-
-                print(
-                    f" - {source} -> {target}"
-                )
-
-            print(
-                "La aplicación intentará utilizar "
-                "los modelos disponibles."
-            )
-
-    # ==========================================================
-    # INSTALAR MODELOS
-    # ==========================================================
-
-    @staticmethod
-    def _install_models():
-
-        print(
-            "Instalando modelos de Argos Translate..."
-        )
-
-        argostranslate.package.update_package_index()
-
-        available = (
-            argostranslate.package
-            .get_available_packages()
-        )
+        # ------------------------------------------------------
+        # MODELOS INSTALADOS
+        # ------------------------------------------------------
 
         installed = {
             (
@@ -166,31 +116,78 @@ class TranslationService:
             )
         }
 
-        for from_code, to_code in [
-            ("en", "es"),
-            ("es", "en"),
-        ]:
+        print(
+            f"Modelos Argos instalados: {installed}"
+        )
 
+        missing_models = [
+            (
+                source,
+                target
+            )
+            for source, target in required_models
             if (
-                from_code,
-                to_code,
-            ) in installed:
+                source,
+                target
+            ) not in installed
+        ]
 
-                print(
-                    f"Modelo {from_code} -> {to_code} "
-                    f"ya instalado."
-                )
+        # ------------------------------------------------------
+        # TODO INSTALADO
+        # ------------------------------------------------------
 
-                continue
+        if not missing_models:
+
+            print(
+                "Los modelos EN<->ES ya están instalados."
+            )
+
+            return
+
+        print(
+            "Modelos faltantes:"
+        )
+
+        for source, target in missing_models:
+
+            print(
+                f" - {source} -> {target}"
+            )
+
+        # ------------------------------------------------------
+        # ACTUALIZAR ÍNDICE
+        # ------------------------------------------------------
+
+        print(
+            "Actualizando índice de paquetes Argos..."
+        )
+
+        argostranslate.package.update_package_index()
+
+        available = (
+            argostranslate.package
+            .get_available_packages()
+        )
+
+        # ------------------------------------------------------
+        # INSTALAR
+        # ------------------------------------------------------
+
+        for source, target in missing_models:
+
+            print(
+                f"Buscando modelo "
+                f"{source} -> {target}..."
+            )
 
             package = next(
                 (
                     package
                     for package in available
                     if (
-                        package.from_code == from_code
+                        package.from_code == source
                         and
-                        package.to_code == to_code
+                        package.to_code == target
                     )
                 ),
                 None,
@@ -198,30 +195,37 @@ class TranslationService:
 
             if not package:
 
-                print(
-                    f"No se encontró modelo "
-                    f"{from_code} -> {to_code}"
+                raise RuntimeError(
+                    f"No se encontró el modelo "
+                    f"{source} -> {target}"
                 )
-
-                continue
 
             print(
                 f"Descargando modelo "
-                f"{from_code} -> {to_code}..."
+                f"{source} -> {target}..."
             )
 
-            downloaded_path = (
-                package.download()
+            package_path = package.download()
+
+            print(
+                f"Instalando modelo "
+                f"{source} -> {target}..."
             )
 
             argostranslate.package.install_from_path(
-                downloaded_path
+                package_path
             )
 
             print(
-                f"Modelo {from_code} -> {to_code} "
+                f"Modelo "
+                f"{source} -> {target} "
                 f"instalado correctamente."
             )
+
+        print(
+            "Todos los modelos requeridos "
+            "están disponibles."
+        )
 
     # ==========================================================
     # TRADUCIR TEXTO
@@ -244,23 +248,7 @@ class TranslationService:
             return text
 
         # ------------------------------------------------------
-        # LIMITAR TEXTO
-        # ------------------------------------------------------
-
-        original_text = text
-
-        if len(text) > self.MAX_TEXT_CHARS:
-
-            text = text[:self.MAX_TEXT_CHARS]
-
-            print(
-                f"Texto limitado para traducción: "
-                f"{len(original_text)} -> "
-                f"{len(text)} caracteres"
-            )
-
-        # ------------------------------------------------------
-        # ASEGURAR MODELO
+        # ASEGURAR MODELOS
         # ------------------------------------------------------
 
         try:
@@ -270,13 +258,33 @@ class TranslationService:
         except Exception as e:
 
             print(
-                f"No fue posible inicializar Argos: {e}"
+                f"No fue posible preparar Argos: {e}"
             )
 
-            return original_text
+            return text
 
         # ------------------------------------------------------
-        # CONTROL DE CONCURRENCIA
+        # LIMITAR TEXTO
+        # ------------------------------------------------------
+
+        text_to_translate = text
+
+        if len(text_to_translate) > self.MAX_TEXT_CHARS:
+
+            text_to_translate = (
+                text_to_translate[
+                    :self.MAX_TEXT_CHARS
+                ]
+            )
+
+            print(
+                f"Texto limitado: "
+                f"{len(text)} -> "
+                f"{len(text_to_translate)} caracteres"
+            )
+
+        # ------------------------------------------------------
+        # TRADUCCIÓN CONTROLADA
         # ------------------------------------------------------
 
         async with self._translation_semaphore:
@@ -284,36 +292,51 @@ class TranslationService:
             try:
 
                 print(
-                    f"Traduciendo "
-                    f"{source} -> {target} "
-                    f"({len(text)} caracteres)"
+                    "------------------------------------------"
+                )
+
+                print(
+                    f"TRADUCCIÓN: "
+                    f"{source} -> {target}"
+                )
+
+                print(
+                    f"CARACTERES: "
+                    f"{len(text_to_translate)}"
                 )
 
                 translated = await asyncio.to_thread(
                     argostranslate.translate.translate,
-                    text,
+                    text_to_translate,
                     source,
                     target,
                 )
 
+                # --------------------------------------------------
+                # VALIDAR
+                # --------------------------------------------------
+
                 if not translated:
 
-                    return original_text
+                    print(
+                        "Argos devolvió una traducción vacía."
+                    )
 
-                # --------------------------------------------------
-                # VALIDAR RESULTADO
-                # --------------------------------------------------
+                    return text
 
                 if self._looks_degenerate(
                     translated
                 ):
 
                     print(
-                        "Traducción degenerada detectada. "
-                        "Se conserva el texto original."
+                        "Traducción degenerada detectada."
                     )
 
-                    return original_text
+                    return text
+
+                print(
+                    "Traducción completada."
+                )
 
                 return translated
 
@@ -323,10 +346,10 @@ class TranslationService:
                     f"Argos Translate error: {e}"
                 )
 
-                return original_text
+                return text
 
     # ==========================================================
-    # TRADUCIR CONSULTA BOOLEANA
+    # TRADUCIR CONSULTA BOOLEAN
     # ==========================================================
 
     async def translate_query(
@@ -345,20 +368,6 @@ class TranslationService:
         if source == target:
             return text
 
-        # ------------------------------------------------------
-        # LIMITAR CONSULTA
-        # ------------------------------------------------------
-
-        if len(text) > self.MAX_TEXT_CHARS:
-
-            text = text[
-                :self.MAX_TEXT_CHARS
-            ]
-
-        # ------------------------------------------------------
-        # SEPARAR BOOLEANOS
-        # ------------------------------------------------------
-
         parts = self.BOOLEAN_SPLIT_PATTERN.split(
             text
         )
@@ -375,8 +384,9 @@ class TranslationService:
 
                 continue
 
-            # Preservar operadores y paréntesis.
-            if stripped.upper() in (
+            upper = stripped.upper()
+
+            if upper in (
                 "(",
                 ")",
                 "AND",
@@ -384,9 +394,7 @@ class TranslationService:
                 "NOT",
             ):
 
-                translated_parts.append(
-                    part
-                )
+                translated_parts.append(part)
 
                 continue
 
@@ -414,7 +422,6 @@ class TranslationService:
     ) -> bool:
 
         if not text:
-
             return False
 
         return (
