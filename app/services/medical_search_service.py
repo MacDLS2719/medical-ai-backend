@@ -237,7 +237,7 @@ class MedicalSearchService:
                 continue
 
             # --------------------------------------------------
-            # ELIMINAR PALABRAS GENÉRICAS
+            # ELIMINAR PALABRAS GENÉRICAS (solo si hay otros términos)
             # --------------------------------------------------
 
             if (
@@ -256,11 +256,12 @@ class MedicalSearchService:
             .strip()
         )
 
-        return (
-            cleaned_query
-            if cleaned_query
-            else query
-        )
+        # Si la limpieza elimina todo, devolver la original
+        if not cleaned_query:
+            print("⚠️ La limpieza eliminó todos los términos, usando consulta original")
+            return query
+
+        return cleaned_query
 
     # ==========================================================
     # TRADUCIR TEXTO
@@ -514,7 +515,7 @@ class MedicalSearchService:
 
             try:
 
-                search_query = (
+                translated_query = (
                     await self.translation_service
                     .translate_query(
                         text=cleaned_query,
@@ -523,19 +524,28 @@ class MedicalSearchService:
                     )
                 )
 
+                # Solo usar la traducción si no está vacía
+                if translated_query and translated_query != cleaned_query:
+                    search_query = translated_query
+                    print(
+                        f"QUERY TRANSLATED: "
+                        f"{cleaned_query} -> "
+                        f"{search_query}"
+                    )
+                else:
+                    print(
+                        "⚠️ Traducción falló o devolvió lo mismo, usando original"
+                    )
+                    search_query = cleaned_query
+
             except Exception as e:
 
                 print(
-                    f"Query translation error: {e}"
+                    f"❌ Query translation error: {e}"
                 )
 
+                print("Usando consulta original sin traducir")
                 search_query = cleaned_query
-
-            print(
-                f"QUERY TRANSLATED: "
-                f"{cleaned_query} -> "
-                f"{search_query}"
-            )
 
         # ======================================================
         # CONSULTAR LAS 3 FUENTES EN PARALELO
@@ -545,6 +555,9 @@ class MedicalSearchService:
             "Consultando PubMed, ClinicalTrials "
             "y Cochrane en paralelo..."
         )
+
+        print(f"Query a buscar: '{search_query}'")
+        print(f"Resultados por fuente: {self.SOURCE_RESULTS}")
 
         results = await asyncio.gather(
 
