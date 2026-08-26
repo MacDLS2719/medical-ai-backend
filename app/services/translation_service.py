@@ -390,6 +390,16 @@ class TranslationService:
 
                     return text
 
+                if self._contains_html_error(
+                    translated
+                ):
+
+                    print(
+                        "❌ Error HTML detectado en traducción (Google Translate falló)"
+                    )
+
+                    return text
+
                 print(
                     "Traducción completada."
                 )
@@ -411,10 +421,23 @@ class TranslationService:
                             source,
                             target
                         )
-                        if translated and not self._looks_degenerate(translated):
+                        if translated and not self._looks_degenerate(translated) and not self._contains_html_error(translated):
                             return translated
                     except Exception as fallback_error:
                         print(f"Fallback también falló: {fallback_error}")
+
+                # Último recurso: traducción de emergencia
+                print("Usando traducción de emergencia como último recurso...")
+                try:
+                    emergency_translation = await self._emergency_translate(
+                        text_to_translate,
+                        source,
+                        target
+                    )
+                    if emergency_translation and emergency_translation != text_to_translate:
+                        return emergency_translation
+                except Exception as emergency_error:
+                    print(f"Traducción de emergencia también falló: {emergency_error}")
 
                 return text
 
@@ -433,28 +456,40 @@ class TranslationService:
             # Prioridad: DeepL -> Google
             if self.translation_service == "deepl" and self._deepl_translator:
                 print("Usando DeepL para traducción")
-                return await asyncio.to_thread(
+                result = await asyncio.to_thread(
                     self._deepl_translator.translate,
                     text,
                     source=source,
                     target=target
                 )
+                # Validar que no sea error HTML
+                if self._contains_html_error(result):
+                    raise Exception("DeepL devolvió error HTML")
+                return result
             elif self._google_translator:
                 print("Usando Google Translate para traducción")
-                return await asyncio.to_thread(
+                result = await asyncio.to_thread(
                     self._google_translator.translate,
                     text,
                     source=source,
                     target=target
                 )
+                # Validar que no sea error HTML
+                if self._contains_html_error(result):
+                    raise Exception("Google Translate devolvió error HTML")
+                return result
             else:
                 # Fallback a Google Translate gratuito
                 print("Creando Google Translator temporal como fallback")
                 translator = GoogleTranslator(source=source, target=target)
-                return await asyncio.to_thread(
+                result = await asyncio.to_thread(
                     translator.translate,
                     text
                 )
+                # Validar que no sea error HTML
+                if self._contains_html_error(result):
+                    raise Exception("Google Translate gratuito devolvió error HTML")
+                return result
 
         except Exception as e:
             print(f"Error con servicio {self.translation_service}: {e}")
@@ -592,3 +627,120 @@ class TranslationService:
                 .search(text)
             )
         )
+
+    # ==========================================================
+    # DETECTAR ERRORES HTML EN TRADUCCIÓN
+    # ==========================================================
+
+    @staticmethod
+    def _contains_html_error(
+        text: str
+    ) -> bool:
+
+        if not text:
+            return False
+
+        # Detectar errores HTML comunes de Google Translate
+        error_indicators = [
+            "Error 500",
+            "Server Error",
+            "That's an error",
+            "There was an error",
+            "try again later",
+            "<!DOCTYPE html>",
+            "<html",
+            "Error 4",
+            "Error 3",
+        ]
+
+        text_lower = text.lower()
+        return any(
+            indicator.lower() in text_lower
+            for indicator in error_indicators
+        )
+
+    # ==========================================================
+    # TRADUCCIÓN DE EMERGENCIA (diccionario básico)
+    # ==========================================================
+
+    async def _emergency_translate(
+        self,
+        text: str,
+        source: str,
+        target: str
+    ) -> str:
+
+        print("⚠️ Usando traducción de emergencia (diccionario básico)")
+
+        # Diccionario básico español -> inglés para términos médicos comunes
+        medical_dict_es_to_en = {
+            "cáncer": "cancer",
+            "cancer": "cancer",
+            "diabetes": "diabetes",
+            "hipertensión": "hypertension",
+            "hipertension": "hypertension",
+            "corazón": "heart",
+            "heart": "heart",
+            "pulmón": "lung",
+            "lung": "lung",
+            "cerebro": "brain",
+            "brain": "brain",
+            "sangre": "blood",
+            "blood": "blood",
+            "tratamiento": "treatment",
+            "treatment": "treatment",
+            "terapia": "therapy",
+            "therapy": "therapy",
+            "medicamento": "medication",
+            "medication": "medication",
+            "fármaco": "drug",
+            "drug": "drug",
+            "enfermedad": "disease",
+            "disease": "disease",
+            "síntoma": "symptom",
+            "symptom": "symptom",
+            "diagnóstico": "diagnosis",
+            "diagnosis": "diagnosis",
+            "paciente": "patient",
+            "patient": "patient",
+            "médico": "doctor",
+            "doctor": "doctor",
+            "hospital": "hospital",
+            "cirugía": "surgery",
+            "surgery": "surgery",
+            "avanzados": "advanced",
+            "advanced": "advanced",
+            "artículos": "articles",
+            "articulos": "articles",
+            "articulo": "article",
+            "article": "article",
+            "endocrinología": "endocrinology",
+            "endocrinologia": "endocrinology",
+            "endocrinology": "endocrinology",
+        }
+
+        # Si el texto está en el diccionario, traducirlo
+        text_lower = text.lower().strip()
+        if text_lower in medical_dict_es_to_en:
+            return medical_dict_es_to_en[text_lower]
+
+        # Si no está en el diccionario, intentar con palabras individuales
+        words = text.split()
+        translated_words = []
+
+        for word in words:
+            word_lower = word.lower().strip()
+            # Limpiar puntuación básica
+            clean_word = word_lower.strip(".,;:!?()[]{}\"'")
+
+            if clean_word in medical_dict_es_to_en:
+                translated_words.append(medical_dict_es_to_en[clean_word])
+            else:
+                # Mantener la palabra original si no está en el diccionario
+                translated_words.append(word)
+
+        result = " ".join(translated_words)
+
+        print(f"Traducción de emergencia: '{text}' -> '{result}'")
+
+        return result

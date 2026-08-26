@@ -524,8 +524,13 @@ class MedicalSearchService:
                     )
                 )
 
-                # Solo usar la traducción si no está vacía
-                if translated_query and translated_query != cleaned_query:
+                # Validar que la traducción sea válida
+                if (
+                    translated_query
+                    and translated_query != cleaned_query
+                    and "Error" not in translated_query
+                    and "error" not in translated_query.lower()
+                ):
                     search_query = translated_query
                     print(
                         f"QUERY TRANSLATED: "
@@ -534,8 +539,9 @@ class MedicalSearchService:
                     )
                 else:
                     print(
-                        "⚠️ Traducción falló o devolvió lo mismo, usando original"
+                        "⚠️ Traducción falló, devolvió error o es igual al original"
                     )
+                    print("Usando consulta original sin traducir")
                     search_query = cleaned_query
 
             except Exception as e:
