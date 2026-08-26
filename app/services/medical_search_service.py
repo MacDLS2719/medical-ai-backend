@@ -18,13 +18,16 @@ class MedicalSearchService:
     # CONFIGURACIÓN
     # ==========================================================
 
-    # Queremos devolver mínimo/hasta 10 resultados.
+    # Cantidad máxima de resultados que devolvemos al frontend
     MAX_FINAL_RESULTS = 10
 
-    # Tamaño máximo del abstract enviado al traductor.
-    MAX_ABSTRACT_CHARS = 1800
+    # Cantidad máxima que solicitamos a cada fuente
+    SOURCE_RESULTS = 10
 
-    # Tamaño máximo del título.
+    # SOLO esta cantidad del abstract será enviada al traductor
+    MAX_ABSTRACT_CHARS = 50
+
+    # Límite de seguridad para títulos
     MAX_TITLE_CHARS = 500
 
     # ==========================================================
@@ -108,6 +111,7 @@ class MedicalSearchService:
         "journals",
 
         "research",
+
         "study",
         "studies",
 
@@ -184,7 +188,6 @@ class MedicalSearchService:
             "es",
             "en",
         ):
-
             return "es"
 
         return language
@@ -214,6 +217,10 @@ class MedicalSearchService:
 
             upper_token = token.upper()
 
+            # --------------------------------------------------
+            # CONSERVAR OPERADORES BOOLEANOS
+            # --------------------------------------------------
+
             if upper_token in (
                 "(",
                 ")",
@@ -227,6 +234,10 @@ class MedicalSearchService:
                 )
 
                 continue
+
+            # --------------------------------------------------
+            # ELIMINAR PALABRAS GENÉRICAS
+            # --------------------------------------------------
 
             if (
                 token.lower()
@@ -276,12 +287,16 @@ class MedicalSearchService:
             )
         )
 
+        # ------------------------------------------------------
+        # NO TRADUCIR SI YA ESTÁ EN EL IDIOMA DESTINO
+        # ------------------------------------------------------
+
         if source_lang == target_lang:
             return text
 
         try:
 
-            return await (
+            translated = await (
                 self.translation_service
                 .translate(
                     text=text,
@@ -290,11 +305,25 @@ class MedicalSearchService:
                 )
             )
 
+            # --------------------------------------------------
+            # SI EL TRADUCTOR DEVUELVE VACÍO
+            # --------------------------------------------------
+
+            if not translated:
+
+                return text
+
+            return translated
+
         except Exception as e:
 
             print(
                 f"Translation error: {e}"
             )
+
+            # --------------------------------------------------
+            # SI FALLA, CONSERVAMOS EL ORIGINAL
+            # --------------------------------------------------
 
             return text
 
@@ -355,11 +384,19 @@ class MedicalSearchService:
                 doc.publication_date
             )
 
+            # --------------------------------------------------
+            # SI NO SE PUEDE PARSEAR LA FECHA
+            # --------------------------------------------------
+
             if parsed is None:
 
                 filtered.append(doc)
 
                 continue
+
+            # --------------------------------------------------
+            # SOLO DOCUMENTOS HASTA HOY
+            # --------------------------------------------------
 
             if parsed <= today:
 
@@ -410,18 +447,6 @@ class MedicalSearchService:
         target_lang = (
             self.normalize_language(
                 target_lang
-            )
-        )
-
-        # ------------------------------------------------------
-        # SIEMPRE BUSCAR HASTA 10 POR FUENTE
-        # ------------------------------------------------------
-
-        source_limit = max(
-            10,
-            min(
-                max_results,
-                10
             )
         )
 
@@ -486,14 +511,24 @@ class MedicalSearchService:
                 "Translating search query..."
             )
 
-            search_query = (
-                await self.translation_service
-                .translate_query(
-                    text=cleaned_query,
-                    source=target_lang,
-                    target="en",
+            try:
+
+                search_query = (
+                    await self.translation_service
+                    .translate_query(
+                        text=cleaned_query,
+                        source=target_lang,
+                        target="en",
+                    )
                 )
-            )
+
+            except Exception as e:
+
+                print(
+                    f"Query translation error: {e}"
+                )
+
+                search_query = cleaned_query
 
             print(
                 f"QUERY TRANSLATED: "
@@ -505,24 +540,29 @@ class MedicalSearchService:
         # CONSULTAR LAS 3 FUENTES EN PARALELO
         # ======================================================
 
+        print(
+            "Consultando PubMed, ClinicalTrials "
+            "y Cochrane en paralelo..."
+        )
+
         results = await asyncio.gather(
 
             self.pubmed_service
             .search_and_fetch(
                 search_query,
-                source_limit,
+                self.SOURCE_RESULTS,
             ),
 
             self.clinical_trials_service
             .search_and_fetch(
                 search_query,
-                source_limit,
+                self.SOURCE_RESULTS,
             ),
 
             self.cochrane_service
             .search_and_fetch(
                 search_query,
-                source_limit,
+                self.SOURCE_RESULTS,
             ),
 
             return_exceptions=True,
@@ -550,8 +590,23 @@ class MedicalSearchService:
             )
         )
 
+        print(
+            f"PubMed resultados: "
+            f"{len(pubmed_results)}"
+        )
+
+        print(
+            f"ClinicalTrials resultados: "
+            f"{len(clinical_trials_results)}"
+        )
+
+        print(
+            f"Cochrane resultados: "
+            f"{len(cochrane_results)}"
+        )
+
         # ======================================================
-        # FILTRAR FECHAS
+        # FILTRAR FECHAS FUTURAS
         # ======================================================
 
         pubmed_results = (
@@ -595,14 +650,16 @@ class MedicalSearchService:
         # UNIFICAR
         # ======================================================
 
-        all_results = (
+        all_results: List[
+            NormalizedDocument
+        ] = (
             pubmed_results
             + clinical_trials_results
             + cochrane_results
         )
 
         # ======================================================
-        # ORDENAR TODO
+        # ORDENAR TODOS LOS RESULTADOS
         # ======================================================
 
         all_results.sort(
@@ -610,8 +667,13 @@ class MedicalSearchService:
             reverse=True
         )
 
+        print(
+            f"TOTAL RESULTADOS DISPONIBLES: "
+            f"{len(all_results)}"
+        )
+
         # ======================================================
-        # TOMAR 10 RESULTADOS
+        # TOMAR LOS 10 MÁS RECIENTES
         # ======================================================
 
         final_results = all_results[
@@ -619,25 +681,12 @@ class MedicalSearchService:
         ]
 
         print(
-            "=========================================="
-        )
-
-        print(
-            f"RESULTADOS OBTENIDOS: "
-            f"{len(all_results)}"
-        )
-
-        print(
             f"RESULTADOS FINALES: "
             f"{len(final_results)}"
         )
 
-        print(
-            "=========================================="
-        )
-
         # ======================================================
-        # TRADUCIR LOS 10 RESULTADOS
+        # TRADUCCIÓN
         # ======================================================
 
         if (
@@ -650,8 +699,14 @@ class MedicalSearchService:
             )
 
             print(
-                f"TRANSLATING "
-                f"{len(final_results)} DOCUMENTS"
+                f"TRADUCIENDO "
+                f"{len(final_results)} DOCUMENTOS"
+            )
+
+            print(
+                "SOLO TITULOS + "
+                f"PRIMEROS {self.MAX_ABSTRACT_CHARS} "
+                "CARACTERES DEL ABSTRACT"
             )
 
             print(
@@ -667,11 +722,10 @@ class MedicalSearchService:
             )
 
             # --------------------------------------------------
-            # SECUENCIAL
+            # PROCESAMIENTO SECUENCIAL
             #
-            # TranslationService ya tiene Semaphore(1).
-            # Aquí también mantenemos procesamiento secuencial
-            # para reducir presión sobre Render.
+            # Esto es intencional para reducir consumo
+            # de memoria/CPU en Render.
             # --------------------------------------------------
 
             for index, doc in enumerate(
@@ -685,9 +739,9 @@ class MedicalSearchService:
                     f"{len(final_results)}"
                 )
 
-                # ==============================================
+                # ==================================================
                 # TÍTULO
-                # ==============================================
+                # ==================================================
 
                 if doc.title:
 
@@ -701,6 +755,10 @@ class MedicalSearchService:
                         ]
                     )
 
+                    print(
+                        "  -> Traduciendo título..."
+                    )
+
                     translated_title = (
                         await self.translate_text(
                             text=title_to_translate,
@@ -711,13 +769,29 @@ class MedicalSearchService:
 
                     if translated_title:
 
-                        doc.title = (
-                            translated_title
-                        )
+                        # ------------------------------------------
+                        # Si el título supera el límite,
+                        # conservamos el resto.
+                        # ------------------------------------------
 
-                # ==============================================
+                        if len(original_title) > self.MAX_TITLE_CHARS:
+
+                            doc.title = (
+                                translated_title
+                                + original_title[
+                                    self.MAX_TITLE_CHARS:
+                                ]
+                            )
+
+                        else:
+
+                            doc.title = (
+                                translated_title
+                            )
+
+                # ==================================================
                 # ABSTRACT
-                # ==============================================
+                # ==================================================
 
                 if doc.abstract:
 
@@ -725,29 +799,54 @@ class MedicalSearchService:
                         doc.abstract
                     )
 
+                    # ----------------------------------------------
+                    # SOLO PRIMEROS 50 CARACTERES
+                    # ----------------------------------------------
+
                     abstract_to_translate = (
                         original_abstract[
                             :self.MAX_ABSTRACT_CHARS
                         ]
                     )
 
-                    translated_abstract = (
-                        await self.translate_text(
-                            text=abstract_to_translate,
-                            source_lang="en",
-                            target_lang=target_lang,
-                        )
-                    )
+                    if abstract_to_translate:
 
-                    if translated_abstract:
-
-                        doc.abstract = (
-                            translated_abstract
+                        print(
+                            "  -> Traduciendo primeros "
+                            f"{self.MAX_ABSTRACT_CHARS} "
+                            "caracteres del abstract..."
                         )
 
-                # ------------------------------------------------
-                # Pequeña pausa
-                # ------------------------------------------------
+                        translated_abstract = (
+                            await self.translate_text(
+                                text=abstract_to_translate,
+                                source_lang="en",
+                                target_lang=target_lang,
+                            )
+                        )
+
+                        if translated_abstract:
+
+                            # --------------------------------------
+                            # IMPORTANTE:
+                            #
+                            # NO reemplazamos todo el abstract.
+                            #
+                            # Traducimos únicamente los primeros
+                            # 50 caracteres y dejamos el resto
+                            # original.
+                            # --------------------------------------
+
+                            doc.abstract = (
+                                translated_abstract
+                                + original_abstract[
+                                    self.MAX_ABSTRACT_CHARS:
+                                ]
+                            )
+
+                # --------------------------------------------------
+                # Pequeña pausa para reducir presión sobre CPU
+                # --------------------------------------------------
 
                 await asyncio.sleep(0.05)
 
@@ -761,7 +860,6 @@ class MedicalSearchService:
 
             print(
                 "=========================================="
-
             )
 
         else:
@@ -820,6 +918,7 @@ class MedicalSearchService:
                     ),
 
                     "results": pubmed_results,
+
                 },
 
                 "clinical_trials": {
@@ -831,6 +930,7 @@ class MedicalSearchService:
                     "results": (
                         clinical_trials_results
                     ),
+
                 },
 
                 "cochrane": {
@@ -842,6 +942,7 @@ class MedicalSearchService:
                     "results": (
                         cochrane_results
                     ),
+
                 },
             },
 
