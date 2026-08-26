@@ -11,6 +11,12 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "your-secret-key-for-dev-change-in-prod"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
 
+    # Translation Service Configuration
+    TRANSLATION_SERVICE: str = "deepl"  # Options: "deepl", "google", "argos"
+    DEEPL_API_KEY: str = ""
+    GOOGLE_TRANSLATE_API_KEY: str = ""
+    USE_LOCAL_TRANSLATION: bool = False  # Use argostranslate locally
+
     @computed_field
     @property
     def sync_database_url(self) -> str:

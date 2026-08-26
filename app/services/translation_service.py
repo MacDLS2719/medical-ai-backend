@@ -1,5 +1,9 @@
 import asyncio
 import re
+from typing import Optional
+
+from deep_translator import GoogleTranslator, DeeplTranslator
+from app.core.config import settings
 
 import argostranslate.package
 import argostranslate.translate
@@ -11,10 +15,13 @@ class TranslationService:
     # CONFIGURACIÓN
     # ==========================================================
 
-    MAX_CONCURRENT_TRANSLATIONS = 1
+    MAX_CONCURRENT_TRANSLATIONS = 3
 
     # Para evitar enviar textos enormes al modelo.
     MAX_TEXT_CHARS = 1800
+
+    # Límite de caracteres para servicios gratuitos
+    MAX_CHARS_PER_REQUEST = 5000
 
     # ==========================================================
     # PATRONES
@@ -45,6 +52,40 @@ class TranslationService:
             self.MAX_CONCURRENT_TRANSLATIONS
         )
 
+        # Determinar qué servicio usar
+        self.translation_service = settings.TRANSLATION_SERVICE.lower()
+        self.use_local = settings.USE_LOCAL_TRANSLATION
+
+        # Inicializar traductores
+        self._deepl_translator = None
+        self._google_translator = None
+
+        if self.translation_service == "deepl" and settings.DEEPL_API_KEY:
+            try:
+                self._deepl_translator = DeeplTranslator(
+                    api_key=settings.DEEPL_API_KEY,
+                    source="auto",
+                    target="es"
+                )
+                print("DeepL translator initialized")
+            except Exception as e:
+                print(f"Failed to initialize DeepL: {e}")
+                self.translation_service = "google"
+
+        if self.translation_service == "google" and settings.GOOGLE_TRANSLATE_API_KEY:
+            try:
+                self._google_translator = GoogleTranslator(
+                    source="auto",
+                    target="es",
+                    api_key=settings.GOOGLE_TRANSLATE_API_KEY
+                )
+                print("Google translator initialized")
+            except Exception as e:
+                print(f"Failed to initialize Google Translate: {e}")
+                # Fallback to free Google Translate
+                self._google_translator = GoogleTranslator(source="auto", target="es")
+                print("Using free Google Translate as fallback")
+
     # ==========================================================
     # ASEGURAR MODELOS
     # ==========================================================
@@ -63,28 +104,28 @@ class TranslationService:
                 "=========================================="
             )
             print(
-                "INICIALIZANDO ARGOS TRANSLATE"
+                f"INICIALIZANDO SERVICIO DE TRADUCCIÓN: {self.translation_service}"
             )
             print(
                 "=========================================="
             )
 
             try:
-
-                await asyncio.to_thread(
-                    self._install_missing_models
-                )
+                # Solo inicializar argos si está configurado para local
+                if self.use_local:
+                    await asyncio.to_thread(
+                        self._install_missing_models
+                    )
+                    print("Argos Translate listo para uso local.")
+                else:
+                    print("Usando servicio de traducción en la nube.")
 
                 self._ready = True
-
-                print(
-                    "Argos Translate listo."
-                )
 
             except Exception as e:
 
                 print(
-                    f"Error preparando Argos Translate: {e}"
+                    f"Error preparando servicio de traducción: {e}"
                 )
 
                 raise
@@ -248,20 +289,16 @@ class TranslationService:
             return text
 
         # ------------------------------------------------------
-        # ASEGURAR MODELOS
+        # ASEGURAR MODELOS (solo para local)
         # ------------------------------------------------------
 
-        try:
-
-            await self._ensure_ready()
-
-        except Exception as e:
-
-            print(
-                f"No fue posible preparar Argos: {e}"
-            )
-
-            return text
+        if self.use_local:
+            try:
+                await self._ensure_ready()
+            except Exception as e:
+                print(f"No fue posible preparar Argos: {e}")
+                # Fallback a servicios en la nube
+                self.use_local = False
 
         # ------------------------------------------------------
         # LIMITAR TEXTO
@@ -305,12 +342,24 @@ class TranslationService:
                     f"{len(text_to_translate)}"
                 )
 
-                translated = await asyncio.to_thread(
-                    argostranslate.translate.translate,
-                    text_to_translate,
-                    source,
-                    target,
-                )
+                # --------------------------------------------------
+                # USAR SERVICIO EN LA NUBE (prioridad)
+                # --------------------------------------------------
+
+                if not self.use_local:
+                    translated = await self._translate_with_cloud(
+                        text_to_translate,
+                        source,
+                        target
+                    )
+                else:
+                    # Fallback a argos local
+                    translated = await asyncio.to_thread(
+                        argostranslate.translate.translate,
+                        text_to_translate,
+                        source,
+                        target,
+                    )
 
                 # --------------------------------------------------
                 # VALIDAR
@@ -319,7 +368,7 @@ class TranslationService:
                 if not translated:
 
                     print(
-                        "Argos devolvió una traducción vacía."
+                        "Servicio devolvió una traducción vacía."
                     )
 
                     return text
@@ -343,10 +392,110 @@ class TranslationService:
             except Exception as e:
 
                 print(
-                    f"Argos Translate error: {e}"
+                    f"Error en traducción: {e}"
                 )
 
+                # Intentar fallback si falla el servicio principal
+                if not self.use_local:
+                    print("Intentando fallback a servicio alternativo...")
+                    try:
+                        translated = await self._translate_with_fallback(
+                            text_to_translate,
+                            source,
+                            target
+                        )
+                        if translated and not self._looks_degenerate(translated):
+                            return translated
+                    except Exception as fallback_error:
+                        print(f"Fallback también falló: {fallback_error}")
+
                 return text
+
+    # ==========================================================
+    # TRADUCIR CON SERVICIO EN LA NUBE
+    # ==========================================================
+
+    async def _translate_with_cloud(
+        self,
+        text: str,
+        source: str,
+        target: str
+    ) -> str:
+
+        try:
+            # Prioridad: DeepL -> Google -> Libre
+            if self.translation_service == "deepl" and self._deepl_translator:
+                return await asyncio.to_thread(
+                    self._deepl_translator.translate,
+                    text,
+                    source=source,
+                    target=target
+                )
+            elif self._google_translator:
+                return await asyncio.to_thread(
+                    self._google_translator.translate,
+                    text,
+                    source=source,
+                    target=target
+                )
+            else:
+                # Fallback a Google Translate gratuito
+                translator = GoogleTranslator(source=source, target=target)
+                return await asyncio.to_thread(
+                    translator.translate,
+                    text
+                )
+
+        except Exception as e:
+            print(f"Error con servicio {self.translation_service}: {e}")
+            raise
+
+    # ==========================================================
+    # TRADUCIR CON FALLBACK
+    # ==========================================================
+
+    async def _translate_with_fallback(
+        self,
+        text: str,
+        source: str,
+        target: str
+    ) -> str:
+
+        try:
+            # Si falló DeepL, intentar Google
+            if self.translation_service == "deepl":
+                print("Intentando Google Translate como fallback...")
+                translator = GoogleTranslator(source=source, target=target)
+                return await asyncio.to_thread(
+                    translator.translate,
+                    text
+                )
+            # Si falló Google, intentar DeepL
+            elif self.translation_service == "google":
+                if self._deepl_translator:
+                    print("Intentando DeepL como fallback...")
+                    return await asyncio.to_thread(
+                        self._deepl_translator.translate,
+                        text,
+                        source=source,
+                        target=target
+                    )
+                else:
+                    # Crear translator temporal
+                    print("Intentando DeepL temporal como fallback...")
+                    temp_translator = DeeplTranslator(
+                        api_key=settings.DEEPL_API_KEY,
+                        source=source,
+                        target=target
+                    )
+                    return await asyncio.to_thread(
+                        temp_translator.translate,
+                        text
+                    )
+
+        except Exception as e:
+            print(f"Error en fallback: {e}")
+            raise
 
     # ==========================================================
     # TRADUCIR CONSULTA BOOLEAN
@@ -424,6 +573,7 @@ class TranslationService:
         if not text:
             return False
 
+        # Detectar repeticiones excesivas (signo de traducción fallida)
         return (
             len(text) > 300
             and bool(
