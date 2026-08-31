@@ -22,6 +22,23 @@ class MessageCreate(BaseModel):
     message: str
 
 
+class MessageAttachmentResponse(BaseModel):
+    id: int
+    message_id: int
+    file_name: str
+    file_path: str
+    file_url: str | None
+    mime_type: str
+    file_size: int | None
+    duration: float | None
+    storage_disk: str
+    attachment_type: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class MessageResponse(BaseModel):
     id: int
     conversation_id: int
@@ -31,6 +48,7 @@ class MessageResponse(BaseModel):
     is_read: bool
     read_at: datetime | None
     created_at: datetime
+    attachments: list[MessageAttachmentResponse] = []
 
     class Config:
         from_attributes = True

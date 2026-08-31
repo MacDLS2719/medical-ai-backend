@@ -14,6 +14,8 @@ from app.services.medical_search_service import MedicalSearchService
 from app.services.pubmed_service import PubMedService
 from app.services.clinical_trials_service import ClinicalTrialsService
 from app.services.cochrane_service import CochraneService
+from app.services.europe_pmc_service import EuropePMCService
+from app.services.who_ictrp_service import WHOICTRPService
 
 
 class MedicalNotificationService:
@@ -26,6 +28,8 @@ class MedicalNotificationService:
             pubmed_service=PubMedService(),
             clinical_trials_service=ClinicalTrialsService(),
             cochrane_service=CochraneService(),
+            europe_pmc_service=EuropePMCService(),
+            who_ictrp_service=WHOICTRPService()
         )
 
     # ==============================================================

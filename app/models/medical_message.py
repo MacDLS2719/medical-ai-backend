@@ -92,3 +92,9 @@ class MedicalMessage(Base):
         back_populates="medical_message",
         cascade="all, delete-orphan"
     )
+
+    attachments = relationship(
+        "MedicalMessageAttachment",
+        back_populates="message",
+        cascade="all, delete-orphan"
+    )

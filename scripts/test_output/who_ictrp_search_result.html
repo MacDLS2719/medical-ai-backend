@@ -1,0 +1,457 @@
+
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head id="head1"><meta name="verify-v1" content="hprYyCBpcdHTuz6MlVnwOWRIZaL8bG4mq0NY2PWfphU=" /><meta name="keywords" content="clinical trial, clinical trials, clinical research, clinical, trial, trials, research" /><title>
+	ICTRP Search Portal
+</title><link href="Css/StyleSheet.css" rel="stylesheet" type="text/css" />
+    <style type="text/css">
+        <!--
+        .nounderline A {
+            text-decoration: none;
+        }
+
+        .highlight {
+            background: #89E3F6;
+        }
+
+        .highlight2 {
+            background: #92F8D0;
+        }
+         
+           .DynamicMenuZIndex {z-index: 999;}
+       
+        -->
+    </style>
+
+
+
+    <!-- Global site tag (gtag.js) - Google Analytics     -->
+          <script async src="https://www.googletagmanager.com/gtag/js?id=G-0NFGQ2PMZE"></script>
+    <script type="text/javascript">
+        window.dataLayer = window.dataLayer || [];
+        function gtag() { dataLayer.push(arguments); }
+        gtag('js', new Date());
+
+        gtag('config', 'G-0NFGQ2PMZE');
+        function selectTextBox1() {
+            document.getElementById('TextBox1').focus();
+        }
+    </script>  
+
+      
+
+</head>
+<body>
+    <div style="top: 50%; left: 50%; position: fixed; margin-top: -100px; margin-left: -100px; z-index: 10002;">
+        <img src="images/ajax_loader_blue.gif" id="ImgLoading" style="width: 200px; height: 200px; display: none;" />
+    </div>
+    <form name="form1" method="post" action="./Default.aspx" id="form1">
+<input type="hidden" name="ToolkitScriptManager_HiddenField" id="ToolkitScriptManager_HiddenField" value="" />
+<input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="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" />
+
+
+<script src="/WebResource.axd?d=Ea6pjflJzgG0bMCQxKkfT2YGx9WLYIctniyhoBHEVzKzCZ0a7r-aQP6tr4ncEBQktTfGdb7REmuMG9ru4nTYAsGGZMJ8bgmwLdd32wq5eYc1&amp;t=638901526200000000" type="text/javascript"></script>
+<script src="/ScriptResource.axd?d=xj_GazGgGQdjxpQEZZoJlnwnyHllLcvs3PUCDsw0A4CUn18MR9UWOULFjuZ_xAlU6cawlJM2o5s-oYIrQ3KJhim0Zn5IUSW7u8cJADBWcqC2GAllW6BGwWjAjEc7MAlYStKX3rZKVeLlUsMOewMgTA2&amp;t=ffffffffec54f2d7" type="text/javascript"></script>
+<script type="text/javascript">
+//<![CDATA[
+if (typeof(Sys) === 'undefined') throw new Error('ASP.NET Ajax client-side framework failed to load.');
+//]]>
+</script>
+
+<script src="/Default.aspx?_TSM_HiddenField_=ToolkitScriptManager_HiddenField&amp;_TSM_CombinedScripts_=%3b%3bAjaxControlToolkit%2c+Version%3d3.5.40412.0%2c+Culture%3dneutral%2c+PublicKeyToken%3d28f01b0e84b6d53e%3aen-US%3a1547e793-5b7e-48fe-8490-03a375b13a33%3ade1feab2%3af9cec9bc%3a35576c48%3aa67c2700%3af2c8e708%3a720a52bf%3a589eaa30%3a698129cf%3a59fb9c6f" type="text/javascript"></script>
+<input type="hidden" name="__VIEWSTATEGENERATOR" id="__VIEWSTATEGENERATOR" value="CA0B0334" />
+<input type="hidden" name="__VIEWSTATEENCRYPTED" id="__VIEWSTATEENCRYPTED" value="" />
+<input type="hidden" name="__EVENTVALIDATION" id="__EVENTVALIDATION" value="0dfs/bYd1TZSCYh1V1vut6xvyl7tKmepMd2kC6a1kA1BSfC1uJVEtLaXHj6dRQbczqkJS9IAFo/tNoIAHY3m9NSFdaQaYgJGEB3mrcUujqk4GpDkHjTlVMYxuq2hDjh2qFlT9ng24O8oBPvHltLWAHbHnOD7Mp6RWQZoeaafC1JoOoZbbX94S3Iq9Ls8mK0L6BUZbseF8fIna3lDWgZmWnnnG0bZxyhYuMCCxDnZM/sMLkP74zKlzj4gOuWlEegPETxM/kdnAQ2Lpjai1ZKtnGblrMFc4KLavHE5smei0MXRTJDzu9FScIfUbGQkDoOcy0sjqUZQ3a8o6U7cuJ/Mlh5JrGj9tibLNVY4zmYxLDQvrkstGh3ZJhmFTI008gWWVwh2FzEmkXsal3x5t+NB1iwI1aXJI8lmV0Aqwzuz+p9/3MfsIjlysDgIpJa/NyF4eJsmeJ2isHi9gj3bXWN0zg==" />
+        
+        <div style="width: 169px; height: 105px; left: 200px; position: absolute; top: 48px; text-align: right;">
+            <span style="font-size: 10pt">&nbsp; &nbsp;
+                  
+                
+                &nbsp;
+                &nbsp;
+       
+                &nbsp;
+             
+                &nbsp; &nbsp;
+            &nbsp; &nbsp;
+                 
+                &nbsp;
+                    
+                &nbsp;
+           
+                &nbsp; &nbsp;
+            
+                &nbsp;
+            
+                &nbsp;
+            
+                &nbsp; &nbsp;
+            &nbsp;&nbsp;</span>
+            
+            &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;
+            &nbsp; &nbsp;&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;&nbsp; &nbsp; &nbsp; &nbsp;
+            &nbsp; &nbsp;
+        </div>
+
+
+
+        <table style="width: 100%;" align="center" bgcolor="#6BA2CC">
+            <tr>
+                <td align="center">
+
+                    <table bgcolor="#6BA2CC" border="0" cellspacing="0" cellpadding="0"><tr><td valign="top"><a href="http://www.who.int/en/" target="_new"><img src="who_logo_en2.gif" alt="World Health Organization site" border="0"></a></td>
+
+</tr>
+
+</table>
+
+
+
+                </td>
+            </tr>
+        </table>
+
+        <table align="center" style="color: #6ba2cc">
+            <tr>
+                <td style="height: 21px" align="center">
+                    <img alt="" src="ICTRP_logo4.jpg" style="height: 62px" /></td>
+            </tr>
+        </table>
+
+
+        <table bgcolor="gainsboro" bordercolor="gainsboro" style="width: 100%" cellspacing="0" class="nounderline">
+            <tr>
+                <td>
+                    <a href="#Menu1_SkipLink"><img alt="Skip Navigation Links" src="/WebResource.axd?d=xcJNU7w2dlou18e4-Dh6Q9rpxMVThXbm5kHfk-sgIU2E8qZq0HlZMmP_ehwTkX59x5teQ0mQqaDw_-ux8Rcw9YecjJWKNogZfpBikXG7UeI1&amp;t=638901526200000000" width="0" height="0" border="0" /></a><table id="Menu1" cellpadding="0" cellspacing="0" border="0" bgcolor="Gainsboro" width="70%">
+	<tr>
+		<td onmouseover="Menu_HoverStatic(this)" onmouseout="Menu_Unhover(this)" onkeyup="Menu_Key(event)" id="Menu1n0"><table cellpadding="0" cellspacing="0" border="0" width="100%">
+			<tr>
+				<td nowrap="nowrap"><a href="Default.aspx"><font face="Arial" color="#284E98" size="3">Home</font></a></td>
+			</tr>
+		</table></td><td width="3"></td><td onmouseover="Menu_HoverStatic(this)" onmouseout="Menu_Unhover(this)" onkeyup="Menu_Key(event)" id="Menu1n1"><table cellpadding="0" cellspacing="0" border="0" width="100%">
+			<tr>
+				<td nowrap="nowrap"><a href="AdvSearch.aspx"><font face="Arial" color="#284E98" size="3">Advanced Search</font></a></td>
+			</tr>
+		</table></td><td width="3"></td><td onmouseover="Menu_HoverStatic(this)" onmouseout="Menu_Unhover(this)" onkeyup="Menu_Key(event)" id="Menu1n2"><table cellpadding="0" cellspacing="0" border="0" width="100%">
+			<tr>
+				<td nowrap="nowrap"><a href="javascript:__doPostBack(&#39;Menu1&#39;,&#39;List By&#39;)"><font face="Arial" color="#284E98" size="3">List By</font></a></td><td width="0"><img src="/WebResource.axd?d=uJ67jg4y3VmLp_IaWWmit0T87CjU7JaGMN5QSYsyv3V8CcPeFDg47s2C_WYmNW-7dR1EkZ4m2cOf3slCNv-2xpFzXp7WoKFa1O2lzbG03rvNMp-l1NA9ypM4Ym7xmGpb0&amp;t=638901526200000000" alt="Expand List By" valign="middle" /></td>
+			</tr>
+		</table></td><td onmouseover="Menu_HoverStatic(this)" onmouseout="Menu_Unhover(this)" onkeyup="Menu_Key(event)" id="Menu1n3"><table cellpadding="0" cellspacing="0" border="0" width="100%">
+			<tr>
+				<td nowrap="nowrap"><a href="https://www.who.int/clinical-trials-registry-platform/the-ictrp-search-portal/search-tips" target="Blank"><font face="Arial" color="#284E98" size="3">Search Tips</font></a></td>
+			</tr>
+		</table></td><td width="3"></td><td onmouseover="Menu_HoverStatic(this)" onmouseout="Menu_Unhover(this)" onkeyup="Menu_Key(event)" title="Universal Trial Number (UTN)" id="Menu1n4"><table cellpadding="0" cellspacing="0" border="0" width="100%">
+			<tr>
+				<td nowrap="nowrap"><a href="https://trialsearch.who.int/utn.aspx"><font face="Arial" color="#284E98" size="3">UTN</font></a></td><td width="0"><img src="/WebResource.axd?d=uJ67jg4y3VmLp_IaWWmit0T87CjU7JaGMN5QSYsyv3V8CcPeFDg47s2C_WYmNW-7dR1EkZ4m2cOf3slCNv-2xpFzXp7WoKFa1O2lzbG03rvNMp-l1NA9ypM4Ym7xmGpb0&amp;t=638901526200000000" alt="Expand UTN" valign="middle" /></td>
+			</tr>
+		</table></td><td onmouseover="Menu_HoverStatic(this)" onmouseout="Menu_Unhover(this)" onkeyup="Menu_Key(event)" id="Menu1n5"><table cellpadding="0" cellspacing="0" border="0" width="100%">
+			<tr>
+				<td nowrap="nowrap"><a href="http://www.who.int/ictrp" target="_blank"><font face="Arial" color="#284E98" size="3">ICTRP website</font></a></td><td width="0"><img src="/WebResource.axd?d=uJ67jg4y3VmLp_IaWWmit0T87CjU7JaGMN5QSYsyv3V8CcPeFDg47s2C_WYmNW-7dR1EkZ4m2cOf3slCNv-2xpFzXp7WoKFa1O2lzbG03rvNMp-l1NA9ypM4Ym7xmGpb0&amp;t=638901526200000000" alt="Expand ICTRP website" valign="middle" /></td>
+			</tr>
+		</table></td><td onmouseover="Menu_HoverStatic(this)" onmouseout="Menu_Unhover(this)" onkeyup="Menu_Key(event)" id="Menu1n6"><table cellpadding="0" cellspacing="0" border="0" width="100%">
+			<tr>
+				<td nowrap="nowrap"><a href="Contact.aspx"><font face="Arial" color="#284E98" size="3">Contact us</font></a></td>
+			</tr>
+		</table></td>
+	</tr>
+</table><div id="Menu1n2Items" class="DynamicMenuZIndex" style="display:none;">
+	<table border="0" cellpadding="0" cellspacing="0">
+		<tr onmouseover="Menu_HoverDynamic(this)" onmouseout="Menu_Unhover(this)" onkeyup="Menu_Key(event)" id="Menu1n7">
+			<td><table cellpadding="0" cellspacing="0" border="0" width="100%">
+				<tr>
+					<td nowrap="nowrap" width="100%"><a href="ListBy.aspx?TypeListing=0"><font face="Arial" color="#284E98" size="3">List By Health Topics</font></a></td>
+				</tr>
+			</table></td>
+		</tr><tr onmouseover="Menu_HoverDynamic(this)" onmouseout="Menu_Unhover(this)" onkeyup="Menu_Key(event)" id="Menu1n8">
+			<td><table cellpadding="0" cellspacing="0" border="0" width="100%">
+				<tr>
+					<td nowrap="nowrap" width="100%"><a href="ListBy.aspx?TypeListing=1"><font face="Arial" color="#284E98" size="3">List By Countries</font></a></td>
+				</tr>
+			</table></td>
+		</tr><tr onmouseover="Menu_HoverDynamic(this)" onmouseout="Menu_Unhover(this)" onkeyup="Menu_Key(event)" id="Menu1n9">
+			<td><table cellpadding="0" cellspacing="0" border="0" width="100%">
+				<tr>
+					<td nowrap="nowrap" width="100%"><a href="ListBy.aspx?TypeListing=2"><font face="Arial" color="#284E98" size="3">List By Regions/Countries</font></a></td>
+				</tr>
+			</table></td>
+		</tr>
+	</table><div id="Menu1n2ItemsUp" onmouseover="PopOut_Up(this)" onmouseout="PopOut_Stop(this)" align="center" style="display:none;">
+		<img src="/WebResource.axd?d=-LgYthJjkX0q27dKuablfmK-LRaCS8FET4PNgJ8mRx1tP6ZZOTtXs97ovRSnw0ikxa1crRkpT5X4ERS7pMkyK2ng-r_iZnEhBxzvMWYPyphUet_9xLWck4ZO5EEkykIL0&amp;t=638901526200000000" alt="Scroll up" />
+	</div><div id="Menu1n2ItemsDn" onmouseover="PopOut_Down(this)" onmouseout="PopOut_Stop(this)" align="center" style="display:none;">
+		<img src="/WebResource.axd?d=Gz028kRe4z9L7lCBZ2KMYhlSHXYJ2QF_yYpbhxhRjuyYb9qZHwotewN8vqF4baSyi8Iihjo0IzIixKUQStfb6azV1_5K79Geox_9WDabwCikN0Oi3ILgG13_exPc24JR0&amp;t=638901526200000000" alt="Scroll down" />
+	</div>
+</div><div id="Menu1n4Items" class="DynamicMenuZIndex" style="display:none;">
+	<table border="0" cellpadding="0" cellspacing="0">
+		<tr onmouseover="Menu_HoverDynamic(this)" onmouseout="Menu_Unhover(this)" onkeyup="Menu_Key(event)" id="Menu1n10">
+			<td><table cellpadding="0" cellspacing="0" border="0" width="100%">
+				<tr>
+					<td nowrap="nowrap" width="100%"><a href="https://trialsearch.who.int/utn.aspx"><font face="Arial" color="#284E98" size="3">UTN request</font></a></td>
+				</tr>
+			</table></td>
+		</tr><tr onmouseover="Menu_HoverDynamic(this)" onmouseout="Menu_Unhover(this)" onkeyup="Menu_Key(event)" id="Menu1n11">
+			<td><table cellpadding="0" cellspacing="0" border="0" width="100%">
+				<tr>
+					<td nowrap="nowrap" width="100%"><a href="utnvalid.aspx"><font face="Arial" color="#284E98" size="3">UTN validation</font></a></td>
+				</tr>
+			</table></td>
+		</tr>
+	</table><div id="Menu1n4ItemsUp" onmouseover="PopOut_Up(this)" onmouseout="PopOut_Stop(this)" align="center" style="display:none;">
+		<img src="/WebResource.axd?d=-LgYthJjkX0q27dKuablfmK-LRaCS8FET4PNgJ8mRx1tP6ZZOTtXs97ovRSnw0ikxa1crRkpT5X4ERS7pMkyK2ng-r_iZnEhBxzvMWYPyphUet_9xLWck4ZO5EEkykIL0&amp;t=638901526200000000" alt="Scroll up" />
+	</div><div id="Menu1n4ItemsDn" onmouseover="PopOut_Down(this)" onmouseout="PopOut_Stop(this)" align="center" style="display:none;">
+		<img src="/WebResource.axd?d=Gz028kRe4z9L7lCBZ2KMYhlSHXYJ2QF_yYpbhxhRjuyYb9qZHwotewN8vqF4baSyi8Iihjo0IzIixKUQStfb6azV1_5K79Geox_9WDabwCikN0Oi3ILgG13_exPc24JR0&amp;t=638901526200000000" alt="Scroll down" />
+	</div>
+</div><div id="Menu1n5Items" class="DynamicMenuZIndex" style="display:none;">
+	<table border="0" cellpadding="0" cellspacing="0">
+		<tr onmouseover="Menu_HoverDynamic(this)" onmouseout="Menu_Unhover(this)" onkeyup="Menu_Key(event)" id="Menu1n12">
+			<td><table cellpadding="0" cellspacing="0" border="0" width="100%">
+				<tr>
+					<td nowrap="nowrap" width="100%"><a href="http://www.who.int/ictrp" target="_blank"><font face="Arial" color="#284E98" size="3">In English</font></a></td>
+				</tr>
+			</table></td>
+		</tr><tr onmouseover="Menu_HoverDynamic(this)" onmouseout="Menu_Unhover(this)" onkeyup="Menu_Key(event)" id="Menu1n13">
+			<td><table cellpadding="0" cellspacing="0" border="0" width="100%">
+				<tr>
+					<td nowrap="nowrap" width="100%"><a href="http://www.who.int/ictrp/fr" target="_blank"><font face="Arial" color="#284E98" size="3">In French</font></a></td>
+				</tr>
+			</table></td>
+		</tr><tr onmouseover="Menu_HoverDynamic(this)" onmouseout="Menu_Unhover(this)" onkeyup="Menu_Key(event)" id="Menu1n14">
+			<td><table cellpadding="0" cellspacing="0" border="0" width="100%">
+				<tr>
+					<td nowrap="nowrap" width="100%"><a href="http://www.who.int/ictrp/es" target="_blank"><font face="Arial" color="#284E98" size="3">In Spanish</font></a></td>
+				</tr>
+			</table></td>
+		</tr><tr onmouseover="Menu_HoverDynamic(this)" onmouseout="Menu_Unhover(this)" onkeyup="Menu_Key(event)" id="Menu1n15">
+			<td><table cellpadding="0" cellspacing="0" border="0" width="100%">
+				<tr>
+					<td nowrap="nowrap" width="100%"><a href="http://www.who.int/ictrp/ar" target="_blank"><font face="Arial" color="#284E98" size="3">In Arabic</font></a></td>
+				</tr>
+			</table></td>
+		</tr><tr onmouseover="Menu_HoverDynamic(this)" onmouseout="Menu_Unhover(this)" onkeyup="Menu_Key(event)" id="Menu1n16">
+			<td><table cellpadding="0" cellspacing="0" border="0" width="100%">
+				<tr>
+					<td nowrap="nowrap" width="100%"><a href="http://www.who.int/ictrp/zh" target="_blank"><font face="Arial" color="#284E98" size="3">In Chinese</font></a></td>
+				</tr>
+			</table></td>
+		</tr><tr onmouseover="Menu_HoverDynamic(this)" onmouseout="Menu_Unhover(this)" onkeyup="Menu_Key(event)" id="Menu1n17">
+			<td><table cellpadding="0" cellspacing="0" border="0" width="100%">
+				<tr>
+					<td nowrap="nowrap" width="100%"><a href="http://www.who.int/ictrp/ru" target="_blank"><font face="Arial" color="#284E98" size="3">In Russian</font></a></td>
+				</tr>
+			</table></td>
+		</tr>
+	</table><div id="Menu1n5ItemsUp" onmouseover="PopOut_Up(this)" onmouseout="PopOut_Stop(this)" align="center" style="display:none;">
+		<img src="/WebResource.axd?d=-LgYthJjkX0q27dKuablfmK-LRaCS8FET4PNgJ8mRx1tP6ZZOTtXs97ovRSnw0ikxa1crRkpT5X4ERS7pMkyK2ng-r_iZnEhBxzvMWYPyphUet_9xLWck4ZO5EEkykIL0&amp;t=638901526200000000" alt="Scroll up" />
+	</div><div id="Menu1n5ItemsDn" onmouseover="PopOut_Down(this)" onmouseout="PopOut_Stop(this)" align="center" style="display:none;">
+		<img src="/WebResource.axd?d=Gz028kRe4z9L7lCBZ2KMYhlSHXYJ2QF_yYpbhxhRjuyYb9qZHwotewN8vqF4baSyi8Iihjo0IzIixKUQStfb6azV1_5K79Geox_9WDabwCikN0Oi3ILgG13_exPc24JR0&amp;t=638901526200000000" alt="Scroll down" />
+	</div>
+</div><a id="Menu1_SkipLink"></a>
+                </td>
+            </tr>
+
+        </table>
+
+
+        
+                <table style="width: 96%">
+                    <tr>
+                        <td class="TabArea" style="height: 40px">
+                            <input name="TextBox1" type="text" id="TextBox1" />
+                            <input type="submit" name="Button1" value="Search" onclick="document.getElementById(&#39;ImgLoading&#39;).style.display=&#39;block&#39;;" id="Button1" style="height: 21px" />
+
+                            
+                            <a id="HyperLink11" href="https://www.who.int/clinical-trials-registry-platform/the-ictrp-search-portal/search-tips" target="_blank" style="text-align: center"><font face="Arial" size="1">Search tips</font></a>
+                            <br />
+                            
+                            <input type="hidden" name="TextBoxWatermarkExtender1_ClientState" id="TextBoxWatermarkExtender1_ClientState" value="Focused" />
+
+
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <span><font face="Arial" size="3"><input id="chkCOVIDRestriction" type="checkbox" name="chkCOVIDRestriction" /><label for="chkCOVIDRestriction">Restrict to COVID-19</label></font></span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <span><font face="Arial" size="3"><input id="chkSearchClinical" type="checkbox" name="chkSearchClinical" /><label for="chkSearchClinical">Search for </label></font></span>
+                            <a id="HyperLink4" href="https://www.who.int/clinical-trials-registry-platform/clinical-trials-in-children" target="_blank" style="display:inline-block;text-align: center"><font face="Arial" size="3">clinical trials in children</font></a>
+                        </td>                        
+                    </tr>                    
+                    <tr style="height: 40px;">
+                        <td>
+                            <span><font face="Arial" size="3"><input id="chkWithoutSynonyms" type="checkbox" name="chkWithoutSynonyms" /><label for="chkWithoutSynonyms">Without Synonyms</label></font></span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <a id="hyperlinkPhase" title="Click for more information" style="vertical-align: top"><u><font face="Arial" color="Blue" size="3">Phases</font></u></a>
+                            <span id="Label43" style="vertical-align: top"><font face="Arial" size="3">are   </font></span>
+
+                            <select size="4" name="ListBoxPhase" multiple="multiple" id="ListBoxPhase">
+	<option value="All">All</option>
+	<option value="Phase 0">Phase 0</option>
+	<option value="Phase 1">Phase 1</option>
+	<option value="Phase 2">Phase 2</option>
+	<option value="Phase 3">Phase 3</option>
+	<option value="Phase 4">Phase 4</option>
+
+</select>
+                        </td>
+                        <td>
+                            <div id="PanelPopUpPhase" class="popupControl">
+	
+                                <div id="UpdatePanel13">
+		
+                                        <table border="0" cellpadding="0" cellspacing="0" style="width: 100%;">
+                                            <tr>
+                                                <td style="font-weight: bold; font-size: x-small; font-family: Arial">Phases</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="font-size: x-small; vertical-align: top; font-family: Arial;">Hold down control key to select multiple phases.
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    
+	</div>
+                            
+</div>
+                            
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <span><font face="Arial" size="3"><input id="chkWithResultsOnly" type="checkbox" name="chkWithResultsOnly" /><label for="chkWithResultsOnly">With results only</label></font></span><br />
+                            <span><font face="Arial" size="3"><input id="chkRareDiseasesOnly" type="checkbox" name="chkRareDiseasesOnly" /><label for="chkRareDiseasesOnly">Rare diseases / orphan drugs</label></font></span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <span><font face="Arial" size="3"><input id="chkGeneEditing" type="checkbox" name="chkGeneEditing" /><label for="chkGeneEditing">Genome editing</label></font></span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <span id="Label19" style="display:inline-block;"><b><font face="Arial" color="Red" size="2"></font></b></span></td>
+                    </tr>
+                </table>
+                <table>
+                    <tr>
+                        <td style="height: 21px; width: 45%;">
+                            <span id="Label6"><b><font face="Arial" size="2">Welcome</font></b></span></td>
+                        <td style="height: 21px; width: 55%;">
+                            <span id="Label5"><b><font face="Arial" size="2">Data Providers</font></b></span></td>
+
+                    </tr>
+                    <tr>
+                        <td bgcolor="gainsboro" style="vertical-align: top;">
+                            <ul style="font-family: Arial; font-size: 8pt;">
+                                <li>The Clinical Trials Search Portal provides access to a central database containing the trial registration data sets provided by the registries listed on the right. It also provides links to the full original records.
+                                    <br>
+                                </li>
+                                <li>To facilitate the unique identification of trials, the Search Portal bridges (groups together) multiple records about the same trial. <a href='https://www.who.int/clinical-trials-registry-platform/the-ictrp-search-portal/linking-related-records-on-the-ictrp-search-portal' target='new'>More information</a><br>
+                                    <br>
+                                </li>
+                                <li>Please note: This Search Portal is not a clinical trials registry. <a href='https://www.who.int/clinical-trials-registry-platform/network/trial-registration' target='blank'>How to register a trial</a><br>
+                                    <br>
+                                </li>
+                                <li>It is possible to export the results of the search into XML.  <a href='https://www.who.int/clinical-trials-registry-platform/network/who-data-set/downloading-records-from-the-ictrp-database' target='blank'>More information</a><br>
+                                    <br>
+                                </li>
+                                <li>The Crawling service is currently not available. If you wish to use this service in 2025 or when it is made available please <a href='https://forms.gle/cJVp7X7kvyXLqoaB7' target="_blank">fill this survey</a><br>
+                                    <br>
+                                </li>
+                            </ul>
+                            </ul>
+                        </td>
+                        <td bgcolor="gainsboro" style="vertical-align: top; width: 425px;">
+                            <!-- GD 2021-07-23 removed by Ghassan's request 
+                                <span style="font-size: 8pt; font-family: Arial">
+                                <span id="Label21" style="display:inline-block;"><font face="Arial" size="1">Data sets from <a href='http://www.who.int/ictrp/search/data_providers/en/index.html' target='blank'>data providers</a> are updated every Friday evening according to the following schedule:</font></span></span>
+                            <br />
+                            <span id="Label23"><font face="Arial" size="1">Every week:</font></span>
+                                -->
+                            <ul>
+                                <span id="lblAustralia" style="display:inline-block;"><font face="Arial" size="1"><li>Australian New Zealand Clinical Trials Registry, last data file imported on <b>24 August 2026</b><br></font></span>
+                                <span id="lblChinese" style="display:inline-block;"><font face="Arial" size="1"><li>Chinese Clinical Trial Registry, last data file imported on <b>24 August 2026</b><br></font></span>
+                                <span id="lblClinical" style="display:inline-block;"><font face="Arial" size="1"><li>ClinicalTrials.gov, last data file imported on <b>24 August 2026</b><br></font></span>
+                                <span id="lblCtis" style="display:inline-block;"><font face="Arial" size="1"><li>Clinical Trials Information System (CTIS), last data file imported on <b>24 August 2026</b></font></span>
+                                <span id="lblEUClinical" style="display:inline-block;"><font face="Arial" size="1"><li>EU Clinical Trials Register (EU-CTR), last data file imported on <b>24 August 2026</b></font></span>
+                                <span id="lblISRCTN" style="display:inline-block;"><font face="Arial" size="1"><li>ISRCTN, last data file imported on <b>24 August 2026</b></font></span>
+                                <span id="lblNetherland" style="display:inline-block;"><font face="Arial" size="1"><li>The Netherlands National Trial Register, last data file imported on <b>24 August 2026</b></font></span>
+                            </ul>
+                            <!-- GD 2021-07-23 removed by Ghassan's request 
+                            <span id="lblEvery4Weeks"><font face="Arial" size="1">Every 4 weeks:</font></span>
+                                -->
+                            <ul><!-- GD 2023-02-23 changed width on first element to avoid wrapping -->
+                                <span id="lblBrazilian" style="display:inline-block;"><font face="Arial" size="1"><li>Brazilian Clinical Trials Registry (ReBec), last data file imported on <b>3 August 2026</b></font></span>
+                                <span id="lblIndia" style="display:inline-block;"><font face="Arial" size="1"><li>Clinical Trials Registry - India, last data file imported on <b>3 August 2026</b><br></font></span>
+                                <span id="lblKorea" style="display:inline-block;"><font face="Arial" size="1"><li>Clinical Research Information Service - Republic of Korea, last data file imported on <b>24 August 2026</b></font></span>
+                                <span id="lblCuba" style="display:inline-block;"><font face="Arial" size="1"><li>Cuban Public Registry of Clinical Trials, last data file imported on <b>10 August 2026</b></font></span>
+                                <span id="lblGerman" style="display:inline-block;"><font face="Arial" size="1"><li>German Clinical Trials Register, last data file imported on <b>3 August 2026</b></font></span>
+                                <span id="lblIran" style="display:inline-block;"><font face="Arial" size="1"><li>Iranian Registry of Clinical Trials, last data file imported on <b>1 June 2026</b></font></span>
+                                <span id="lblJapan" style="display:inline-block;"><font face="Arial" size="1"><li>Japan Registry of Clinical Trials (jRCT), last data file imported on <b>29 June 2026</b></font></span>
+                                <span id="lblPanafrica" style="display:inline-block;"><font face="Arial" size="1"><li>Pan African Clinical Trial Registry, last data file imported on <b>3 August 2026</b></font></span>
+                                <span id="lblSriLanka" style="display:inline-block;"><font face="Arial" size="1"><li>Sri Lanka Clinical Trials Registry, last data file imported on <b>3 August 2026</b></font></span>
+                                <span id="lblThai" style="display:inline-block;"><font face="Arial" size="1"><li>Thai Clinical Trials Registry (TCTR), last data file imported on <b>3 August 2026</b></font></span>
+                                <span id="lblPeru" style="display:inline-block;"><font face="Arial" size="1"><li>Peruvian Clinical Trials Registry (REPEC), last data file imported on <b>30 March 2026</b></font></span>
+                                <span id="lblLebanon" style="display:inline-block;"><font face="Arial" size="1"><li>Lebanese Clinical Trials Registry (LBCTR), last data file imported on <b>2 February 2026</b></font></span>
+                                <span id="lblTrad" style="display:inline-block;"><font face="Arial" size="1"><li>International Traditional Medicine Clinical Trial Registry (ITMCTR), last data file imported on <b>3 August 2026</b></font></span>
+                            </ul>
+
+                        </td>
+
+
+                    </tr>
+                </table>
+            
+
+        <table align="center" width="100%">
+            <tr>
+                <td style="border-top: #6ba2cc thick solid">
+                    <span id="Label18" style="display:inline-block;"><b><font face="Arial" size="2">Disclaimer: Trials posted on this search portal are not endorsed by WHO, but are provided as a service to our users. In no event shall the World Health Organization be liable for any damages arising from the use of the information linked to in this section. None of the information obtained through use of the search portal should in any way be used in clinical care without consulting a physician or licensed health professional. WHO is not responsible for the accuracy, completeness and/or use made of the content displayed for any trial record.</font></b></span></td>
+            </tr>
+            <tr>
+
+                <td align="center" style="height: 21px">
+                    <a id="HyperLink8" href="http://www.who.int/about/copyright/en/" target="_blank" style="text-align: center"><b><font face="Arial" size="2">Copyright - World Health Organization</font></b></a>
+                    <span id="Label17"><b><font face="Arial" size="2">- Version 3.6 -</font></b></span>
+                    <a id="HyperLink3" href="ICTRP_Revisions_document.pdf" target="_blank" style="text-align: center"><b><font face="Arial" size="2">Version history</font></b></a>&nbsp;<span id="Label32"><b><font face="Arial" size="2">  </font></b></span>  
+                    &nbsp;<!-- 
+                            <a id="HyperLink9" href="crawl/crawl0.aspx" target="_self" style="text-align: center"><font face="Arial" size="2">For crawlers</font></a> -->
+                        </td>
+
+            </tr>
+        </table>
+
+
+
+
+    
+
+<script type="text/javascript">
+//<![CDATA[
+(function() {var fn = function() {$get("ToolkitScriptManager_HiddenField").value = '';Sys.Application.remove_init(fn);};Sys.Application.add_init(fn);})();var Menu1_Data = new Object();
+Menu1_Data.disappearAfter = 500;
+Menu1_Data.horizontalOffset = 2;
+Menu1_Data.verticalOffset = 0;
+Menu1_Data.hoverClass = '';
+Sys.Application.add_init(function() {
+    $create(Sys.Extended.UI.TextBoxWatermarkBehavior, {"ClientStateFieldID":"TextBoxWatermarkExtender1_ClientState","WatermarkCssClass":"watermark","WatermarkText":"Example: liver cancer OR breast cancer NOT genetic","id":"TextBoxWatermarkExtender1"}, null, null, $get("TextBox1"));
+});
+Sys.Application.add_init(function() {
+    $create(Sys.Extended.UI.PopupControlBehavior, {"PopupControlID":"PanelPopUpPhase","Position":3,"dynamicServicePath":"/Default.aspx","id":"PopupControlExtender4"}, null, null, $get("hyperlinkPhase"));
+});
+//]]>
+</script>
+</form>
+
+     
+</body>
+</html>
+

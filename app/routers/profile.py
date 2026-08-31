@@ -4,7 +4,6 @@ from app.core.database import get_db
 from app.core.auth import get_current_user
 from app.models.user import User
 from app.models.patient import Patient
-from app.models.doctor import Doctor
 from app.schemas.profile import ProfileResponse, ProfileUpdate
 
 router = APIRouter(prefix="/profile", tags=["Profile"])
@@ -34,17 +33,7 @@ def get_profile(
                 "longitude": patient.longitude,
             })
     elif current_user.role == "doctor":
-        doctor = db.query(Doctor).filter(Doctor.user_id == current_user.id).first()
-        if doctor:
-            profile_data.update({
-                "first_name": doctor.first_name,
-                "last_name": doctor.last_name,
-                "medical_license": doctor.medical_license,
-                "specialty": doctor.specialty,
-                "address": doctor.address,
-                "latitude": doctor.latitude,
-                "longitude": doctor.longitude,
-            })
+        raise HTTPException(status_code=403, detail="Doctors must use /api/doctor-profile endpoint")
     
     if "first_name" not in profile_data:
         raise HTTPException(status_code=404, detail="Profile details not found for this user.")
@@ -77,25 +66,10 @@ def update_profile(
             patient.latitude = profile_update.latitude
         if profile_update.longitude is not None:
             patient.longitude = profile_update.longitude
-
-    elif current_user.role == "doctor":
-        doctor = db.query(Doctor).filter(Doctor.user_id == current_user.id).first()
-        if not doctor:
-            raise HTTPException(status_code=404, detail="Doctor profile not found.")
-        
-        if profile_update.first_name is not None:
-            doctor.first_name = profile_update.first_name
-        if profile_update.last_name is not None:
-            doctor.last_name = profile_update.last_name
-        if profile_update.specialty is not None:
-            doctor.specialty = profile_update.specialty
-        if profile_update.address is not None:
-            doctor.address = profile_update.address
-        if profile_update.latitude is not None:
-            doctor.latitude = profile_update.latitude
-        if profile_update.longitude is not None:
-            doctor.longitude = profile_update.longitude
             
+    elif current_user.role == "doctor":
+        raise HTTPException(status_code=403, detail="Doctors must use /api/doctor-profile endpoint")
+        
     db.commit()
     
     # Return updated profile by calling get_profile logic or just fetching again

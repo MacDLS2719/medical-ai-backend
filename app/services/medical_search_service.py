@@ -9,6 +9,8 @@ from app.schemas.medical import NormalizedDocument
 from app.services.pubmed_service import PubMedService
 from app.services.clinical_trials_service import ClinicalTrialsService
 from app.services.cochrane_service import CochraneService
+from app.services.europe_pmc_service import EuropePMCService
+from app.services.who_ictrp_service import WHOICTRPService
 from app.services.translation_service import TranslationService
 
 
@@ -20,10 +22,10 @@ class MedicalSearchService:
 
     # Cantidad máxima de resultados que devolvemos al frontend
     # Eliminado límite para mostrar todos los resultados encontrados
-    MAX_FINAL_RESULTS = 999  # Practicamente sin límite
+    MAX_FINAL_RESULTS = 9999  # Practicamente sin límite
 
     # Cantidad máxima que solicitamos a cada fuente
-    SOURCE_RESULTS = 20  # Aumentado para obtener más resultados
+    SOURCE_RESULTS = 100  # Aumentado para obtener muchos más resultados
 
     # SOLO 40 palabras del abstract serán enviadas al traductor
     MAX_ABSTRACT_WORDS = 40
@@ -148,6 +150,8 @@ class MedicalSearchService:
         pubmed_service: PubMedService,
         clinical_trials_service: ClinicalTrialsService,
         cochrane_service: CochraneService,
+        europe_pmc_service = None,
+        who_ictrp_service = None,
     ):
 
         self.pubmed_service = pubmed_service
@@ -159,6 +163,19 @@ class MedicalSearchService:
         self.cochrane_service = (
             cochrane_service
         )
+
+        # Inicializar servicios opcionales de forma segura
+        try:
+            self.europe_pmc_service = europe_pmc_service if europe_pmc_service else EuropePMCService()
+        except Exception as e:
+            print(f"Error inicializando EuropePMCService: {e}")
+            self.europe_pmc_service = None
+
+        try:
+            self.who_ictrp_service = who_ictrp_service if who_ictrp_service else WHOICTRPService()
+        except Exception as e:
+            print(f"Error inicializando WHOICTRPService: {e}")
+            self.who_ictrp_service = None
 
         self.translation_service = (
             TranslationService()
@@ -436,7 +453,7 @@ class MedicalSearchService:
         )
 
     # ==========================================================
-    # BUSCAR
+    # BUSCAR (NO STREAMING - Versión original)
     # ==========================================================
 
     async def search(
@@ -469,11 +486,11 @@ class MedicalSearchService:
         )
 
         print(
-            "RESULTADOS POR FUENTE: 10"
+            "RESULTADOS POR FUENTE: 100"
         )
 
         print(
-            "RESULTADOS FINALES: 10"
+            "RESULTADOS FINALES: Sin límite"
         )
 
         print(
@@ -554,61 +571,59 @@ class MedicalSearchService:
                 search_query = cleaned_query
 
         # ======================================================
-        # CONSULTAR LAS 3 FUENTES EN PARALELO
+        # CONSULTAR LAS 5 FUENTES EN PARALELO (con manejo seguro)
         # ======================================================
 
         print(
-            "Consultando PubMed, ClinicalTrials "
-            "y Cochrane en paralelo..."
+            "Consultando PubMed, ClinicalTrials, Cochrane, Europe PMC y WHO ICTRP en paralelo..."
         )
 
         print(f"Query a buscar: '{search_query}'")
         print(f"Resultados por fuente: {self.SOURCE_RESULTS}")
 
-        results = await asyncio.gather(
+        # Crear lista de tareas de forma segura
+        tasks = [
+            self.pubmed_service.search_and_fetch(search_query, self.SOURCE_RESULTS),
+            self.clinical_trials_service.search_and_fetch(search_query, self.SOURCE_RESULTS),
+            self.cochrane_service.search_and_fetch(search_query, self.SOURCE_RESULTS),
+        ]
 
-            self.pubmed_service
-            .search_and_fetch(
-                search_query,
-                self.SOURCE_RESULTS,
-            ),
+        # Agregar servicios opcionales solo si existen
+        if self.europe_pmc_service:
+            tasks.append(self.europe_pmc_service.search_and_fetch(search_query, self.SOURCE_RESULTS))
+        else:
+            print("Europe PMC service no disponible, usando placeholder")
+            tasks.append(asyncio.sleep(0))  # Placeholder
 
-            self.clinical_trials_service
-            .search_and_fetch(
-                search_query,
-                self.SOURCE_RESULTS,
-            ),
+        if self.who_ictrp_service:
+            tasks.append(self.who_ictrp_service.search_and_fetch(search_query, self.SOURCE_RESULTS))
+        else:
+            print("WHO ICTRP service no disponible, usando placeholder")
+            tasks.append(asyncio.sleep(0))  # Placeholder
 
-            self.cochrane_service
-            .search_and_fetch(
-                search_query,
-                self.SOURCE_RESULTS,
-            ),
-
-            return_exceptions=True,
-        )
+        results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # ======================================================
-        # PROTEGER RESULTADOS
+        # PROTEGER RESULTADOS (con manejo de placeholders)
         # ======================================================
 
-        pubmed_results = (
-            self._safe_result(
-                results[0]
-            )
-        )
+        pubmed_results = self._safe_result(results[0])
+        clinical_trials_results = self._safe_result(results[1])
+        cochrane_results = self._safe_result(results[2])
 
-        clinical_trials_results = (
-            self._safe_result(
-                results[1]
-            )
-        )
+        # Manejo seguro de servicios opcionales
+        europe_pmc_results = []
+        who_ictrp_results = []
 
-        cochrane_results = (
-            self._safe_result(
-                results[2]
-            )
-        )
+        if len(results) > 3 and self.europe_pmc_service:
+            europe_pmc_results = self._safe_result(results[3])
+        else:
+            print("Europe PMC: usando lista vacía (servicio no disponible)")
+
+        if len(results) > 4 and self.who_ictrp_service:
+            who_ictrp_results = self._safe_result(results[4])
+        else:
+            print("WHO ICTRP: usando lista vacía (servicio no disponible)")
 
         print(
             f"PubMed resultados: "
@@ -623,6 +638,16 @@ class MedicalSearchService:
         print(
             f"Cochrane resultados: "
             f"{len(cochrane_results)}"
+        )
+
+        print(
+            f"Europe PMC resultados: "
+            f"{len(europe_pmc_results)}"
+        )
+
+        print(
+            f"WHO ICTRP resultados: "
+            f"{len(who_ictrp_results)}"
         )
 
         # ======================================================
@@ -647,6 +672,18 @@ class MedicalSearchService:
             )
         )
 
+        europe_pmc_results = (
+            self._filter_future_dates(
+                europe_pmc_results
+            )
+        )
+
+        who_ictrp_results = (
+            self._filter_future_dates(
+                who_ictrp_results
+            )
+        )
+
         # ======================================================
         # ORDENAR CADA FUENTE
         # ======================================================
@@ -666,6 +703,16 @@ class MedicalSearchService:
             reverse=True
         )
 
+        europe_pmc_results.sort(
+            key=self._get_sort_key,
+            reverse=True
+        )
+
+        who_ictrp_results.sort(
+            key=self._get_sort_key,
+            reverse=True
+        )
+
         # ======================================================
         # UNIFICAR
         # ======================================================
@@ -676,6 +723,8 @@ class MedicalSearchService:
             pubmed_results
             + clinical_trials_results
             + cochrane_results
+            + europe_pmc_results
+            + who_ictrp_results
         )
 
         # ======================================================
@@ -1004,10 +1053,161 @@ class MedicalSearchService:
                     ),
 
                 },
+
+                "europe_pmc": {
+
+                    "count": len(
+                        europe_pmc_results
+                    ),
+
+                    "results": (
+                        europe_pmc_results
+                    ),
+
+                },
+
+                "who_ictrp": {
+
+                    "count": len(
+                        who_ictrp_results
+                    ),
+
+                    "results": (
+                        who_ictrp_results
+                    ),
+
+                },
             },
 
             "results": final_results,
         }
+
+    # ==========================================================
+    # BUSCAR Y TRANSMITIR (STREAMING)
+    # ==========================================================
+
+    async def search_stream(
+        self,
+        query: str,
+        max_results: int = 10,
+        target_lang: str = "es"
+    ):
+        """
+        Generador asíncrono que cede (yield) resultados a medida que
+        se van obteniendo de las distintas fuentes.
+        Formato de salida: NDJSON (Newline Delimited JSON).
+        """
+        import json
+
+        target_lang = self.normalize_language(target_lang)
+
+        print("==========================================")
+        print("MEDICAL SEARCH STREAMING")
+        print(f"TARGET LANGUAGE: {target_lang}")
+        print(f"QUERY ORIGINAL: {query}")
+        print("==========================================")
+
+        cleaned_query = self._clean_search_terms(query)
+        if cleaned_query != query:
+            print(f"QUERY CLEANED: {query} -> {cleaned_query}")
+
+        search_query = cleaned_query
+
+        if target_lang != "en" and cleaned_query:
+            try:
+                translated_query = await self.translation_service.translate_query(
+                    text=cleaned_query,
+                    source=target_lang,
+                    target="en",
+                )
+                if (translated_query and translated_query != cleaned_query and 
+                    "error" not in translated_query.lower()):
+                    search_query = translated_query
+                    print(f"QUERY TRANSLATED: {cleaned_query} -> {search_query}")
+                else:
+                    search_query = cleaned_query
+            except Exception as e:
+                print(f"❌ Query translation error: {e}")
+                search_query = cleaned_query
+
+        # Enviar primer chunk: metadatos de inicio
+        yield json.dumps({
+            "type": "meta",
+            "query": query,
+            "search_query": search_query,
+            "target_lang": target_lang
+        }) + "\n"
+
+        print(f"Consultando fuentes con: '{search_query}'")
+
+        # Wrapper para mantener el nombre de la fuente
+        async def fetch_source(name: str, coro):
+            res = await coro
+            return name, res
+
+        # Lanzar tareas en paralelo
+        tasks = [
+            fetch_source("pubmed", self.pubmed_service.search_and_fetch(search_query, self.SOURCE_RESULTS)),
+            fetch_source("clinical_trials", self.clinical_trials_service.search_and_fetch(search_query, self.SOURCE_RESULTS)),
+            fetch_source("cochrane", self.cochrane_service.search_and_fetch(search_query, self.SOURCE_RESULTS)),
+            fetch_source("europe_pmc", self.europe_pmc_service.search_and_fetch(search_query, self.SOURCE_RESULTS)),
+            fetch_source("who_ictrp", self.who_ictrp_service.search_and_fetch(search_query, self.SOURCE_RESULTS))
+        ]
+
+        for future in asyncio.as_completed(tasks):
+            try:
+                source_name, source_results = await future
+                source_results = self._safe_result(source_results)
+                source_results = self._filter_future_dates(source_results)
+                
+                print(f"[{source_name.upper()}] devolvió {len(source_results)} resultados.")
+
+                # Traducir los resultados si es necesario
+                if target_lang != "en" and source_results:
+                    for doc in source_results:
+                        if doc.title:
+                            try:
+                                t = await self.translate_text(
+                                    doc.title[:self.MAX_TITLE_CHARS], "en", target_lang
+                                )
+                                if t and t != doc.title:
+                                    doc.title = t
+                            except:
+                                pass
+                        if doc.abstract:
+                            try:
+                                words = doc.abstract.split()
+                                snippet = " ".join(words[:self.MAX_ABSTRACT_WORDS])
+                                t = await self.translate_text(snippet, "en", target_lang)
+                                if t and t != snippet:
+                                    doc.abstract = t + " " + " ".join(words[self.MAX_ABSTRACT_WORDS:])
+                            except:
+                                pass
+                        # Ceder espacio al event loop
+                        await asyncio.sleep(0.01)
+
+                # Ceder los resultados de esta fuente al cliente
+                yield json.dumps({
+                    "type": "results",
+                    "source": source_name,
+                    "count": len(source_results),
+                    "data": [doc.model_dump() for doc in source_results]
+                }) + "\n"
+
+            except Exception as e:
+                print(f"Error procesando resultados de {source_name}: {e}")
+                yield json.dumps({
+                    "type": "error",
+                    "source": source_name,
+                    "message": str(e)
+                }) + "\n"
+
+        # Señal de fin
+        yield json.dumps({
+            "type": "done"
+        }) + "\n"
+        print("Búsqueda streaming finalizada.")
+
 
     # ==========================================================
     # PROTEGER RESULTADO

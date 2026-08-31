@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -14,6 +14,7 @@ from app.schemas.medical_conversation import (
 from app.services.medical_conversation_service import (
     MedicalConversationService
 )
+from app.services.audio_storage_service import AudioStorageService
 
 
 router = APIRouter()
@@ -121,6 +122,74 @@ def send_message(
         raise HTTPException(
             status_code=404,
             detail="Conversación no encontrada o usuario no autorizado"
+        )
+
+    return message
+
+
+# ==========================================================
+# ENVIAR AUDIO
+# ==========================================================
+
+@router.post(
+    "/conversations/{conversation_id}/messages/audio",
+    response_model=MessageResponse
+)
+async def send_audio_message(
+    conversation_id: int,
+    sender_id: int,
+    audio: UploadFile = File(...),
+    duration: float = Form(None),
+    db: Session = Depends(get_db)
+):
+    # 1. Crear el mensaje en la base de datos con un texto genérico
+    message = MedicalConversationService.send_message(
+        db=db,
+        conversation_id=conversation_id,
+        sender_id=sender_id,
+        message="[Mensaje de Voz]"
+    )
+
+    if not message:
+        raise HTTPException(
+            status_code=404,
+            detail="Conversación no encontrada o usuario no autorizado"
+        )
+
+    # 2. Guardar el archivo de audio física/lógicamente
+    audio_service = AudioStorageService()
+    try:
+        attachment_data = await audio_service.save_audio(audio, message.id)
+    except ValueError as e:
+        db.delete(message)
+        db.commit()
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
+    except Exception as e:
+        db.delete(message)
+        db.commit()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al guardar el archivo de audio: {str(e)}"
+        )
+
+    # 3. Crear el registro del attachment en la base de datos
+    try:
+        MedicalConversationService.create_attachment(
+            db=db,
+            message_id=message.id,
+            attachment_data=attachment_data,
+            duration=duration
+        )
+    except Exception as e:
+        await audio_service.delete_audio(attachment_data["file_path"])
+        db.delete(message)
+        db.commit()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al registrar el adjunto de audio: {str(e)}"
         )
 
     return message

@@ -25,6 +25,10 @@ from app.models.medical_message import MedicalMessage
 from app.models.medical_message_notification import MedicalMessageNotification
 from app.models.medical_notification import MedicalNotification
 
+from app.models.doctor_education import DoctorEducation
+from app.models.doctor_media import DoctorMedia
+
+from app.models.medical_message_attachment import MedicalMessageAttachment
 
 __all__ = [
     "User",
@@ -52,4 +56,8 @@ __all__ = [
     "MedicalMessage",
     "MedicalMessageNotification",
     "MedicalNotification",
+    "MedicalMessageAttachment",
+
+    "DoctorEducation",
+    "DoctorMedia",
 ]

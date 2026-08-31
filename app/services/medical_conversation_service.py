@@ -6,6 +6,7 @@ from sqlalchemy import or_, and_
 from app.models.medical_conversation import MedicalConversation
 from app.models.medical_message import MedicalMessage
 from app.models.medical_message_notification import MedicalMessageNotification
+from app.models.medical_message_attachment import MedicalMessageAttachment
 
 
 class MedicalConversationService:
@@ -293,3 +294,30 @@ class MedicalConversationService:
         db.commit()
 
         return True
+
+    # ==========================================================
+    # CREAR ADJUNTO
+    # ==========================================================
+
+    @staticmethod
+    def create_attachment(
+        db: Session,
+        message_id: int,
+        attachment_data: dict,
+        duration: float = None
+    ):
+        attachment = MedicalMessageAttachment(
+            message_id=message_id,
+            file_name=attachment_data["file_name"],
+            file_path=attachment_data["file_path"],
+            file_url=attachment_data["file_url"],
+            mime_type=attachment_data["mime_type"],
+            file_size=attachment_data["file_size"],
+            storage_disk=attachment_data["storage_disk"],
+            attachment_type=attachment_data["attachment_type"],
+            duration=duration
+        )
+        db.add(attachment)
+        db.commit()
+        db.refresh(attachment)
+        return attachment
