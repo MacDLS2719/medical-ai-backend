@@ -108,6 +108,8 @@ def register_doctor(
         city=data.city,
         country=data.country,
         postal_code=data.postal_code,
+        latitude=data.latitude,
+        longitude=data.longitude,
         website=data.website,
         professional_description=data.professional_description,
         consultation_phone=data.consultation_phone,

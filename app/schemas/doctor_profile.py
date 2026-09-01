@@ -492,6 +492,18 @@ class DoctorCreateRequest(BaseModel):
         max_length=20
     )
 
+    latitude: Optional[float] = Field(
+        default=None,
+        ge=-90,
+        le=90
+    )
+
+    longitude: Optional[float] = Field(
+        default=None,
+        ge=-180,
+        le=180
+    )
+
     website: Optional[str] = Field(
         default=None,
         max_length=500
