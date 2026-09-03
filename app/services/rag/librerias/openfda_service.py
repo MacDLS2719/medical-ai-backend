@@ -2,7 +2,7 @@ import httpx
 
 from typing import List, Optional
 
-from app.schemas.medical import NormalizedDocument
+from app.services.rag.schemas import NormalizedDocument
 
 
 class OpenFDAService:

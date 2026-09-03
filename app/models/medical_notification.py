@@ -2,9 +2,6 @@ from sqlalchemy import (
     Column,
     Integer,
     String,
-    Text,
-    Boolean,
-    JSON,
     ForeignKey,
     DateTime,
 )
@@ -18,11 +15,19 @@ class MedicalNotification(Base):
 
     __tablename__ = "medical_notifications"
 
+    # ==========================================================
+    # IDENTIFICADOR
+    # ==========================================================
+
     id = Column(
         Integer,
         primary_key=True,
         index=True,
     )
+
+    # ==========================================================
+    # USUARIO
+    # ==========================================================
 
     user_id = Column(
         Integer,
@@ -31,8 +36,23 @@ class MedicalNotification(Base):
         index=True,
     )
 
-    type = Column(
-        String(50),
+    # ==========================================================
+    # INFORMACIÓN DE LA ALERTA
+    # ==========================================================
+
+    name = Column(
+        String(255),
+        nullable=False,
+    )
+
+    medical_topic = Column(
+        String(255),
+        nullable=False,
+        index=True,
+    )
+
+    information_type = Column(
+        String(100),
         nullable=False,
         index=True,
     )
@@ -42,26 +62,27 @@ class MedicalNotification(Base):
         nullable=False,
     )
 
-    title = Column(
-        String(255),
+    source = Column(
+        String(100),
         nullable=False,
+        index=True,
     )
 
-    message = Column(
-        Text,
+    # ==========================================================
+    # ESTADO
+    # ==========================================================
+
+    status = Column(
+        String(20),
         nullable=False,
+        default="active",
+        server_default="active",
+        index=True,
     )
 
-    is_read = Column(
-        Boolean,
-        nullable=False,
-        default=False,
-    )
-
-    data = Column(
-        JSON,
-        nullable=True,
-    )
+    # ==========================================================
+    # FECHAS
+    # ==========================================================
 
     created_at = Column(
         DateTime,

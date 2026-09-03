@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.medical_document import MedicalDocument
-from app.schemas.medical import NormalizedDocument
+from app.services.rag.schemas import NormalizedDocument
 
 
 class MedicalDocumentService:

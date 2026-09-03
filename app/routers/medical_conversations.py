@@ -15,6 +15,8 @@ from app.services.medical_conversation_service import (
     MedicalConversationService
 )
 from app.services.audio_storage_service import AudioStorageService
+from app.routers.websockets import manager as ws_manager
+from datetime import datetime
 
 
 router = APIRouter()
@@ -125,6 +127,42 @@ def send_message(
         )
 
     return message
+
+
+# ==========================================================
+# VIDEOLLAMADA (JITSI MEET)
+# ==========================================================
+
+@router.post(
+    "/conversations/{conversation_id}/video-call"
+)
+async def create_video_call(
+    conversation_id: int,
+    sender_id: int,
+    db: Session = Depends(get_db)
+):
+    try:
+        conversation = MedicalConversationService.get_conversation(db, conversation_id, sender_id)
+        if not conversation:
+            raise HTTPException(status_code=404, detail="Conversación no encontrada")
+            
+        receiver_id = conversation.doctor_id if conversation.patient_id == sender_id else conversation.patient_id
+        
+        timestamp = int(datetime.now().timestamp())
+        room_name = f"MedicalChat-{conversation_id}-{timestamp}"
+            
+        await ws_manager.send_personal_message({
+            "action": "INCOMING_CALL",
+            "from_user": sender_id,
+            "conversation_id": conversation_id,
+            "room_name": room_name
+        }, receiver_id)
+        
+        return {"status": "calling", "room_name": room_name}
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al crear videollamada: {str(e)}")
 
 
 # ==========================================================

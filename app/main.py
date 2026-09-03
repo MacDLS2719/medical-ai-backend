@@ -12,6 +12,9 @@ from app.routers import (
     medical_conversations,
     medical_appointments,
     doctor_profile,
+    medical_alerts,
+    websockets,
+    doctor_verification,
 )
 
 app = FastAPI(
@@ -32,6 +35,7 @@ app.add_middleware(
 app.include_router(metadata.router)
 app.include_router(medical_search.router)
 app.include_router(ai_chat.router)
+app.include_router(medical_alerts.router)
 
 # Mount the static files directory
 current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -62,6 +66,16 @@ app.include_router(
 
 app.include_router(
     medical_appointments.router,
+    prefix="/api"
+)
+
+app.include_router(
+    websockets.router,
+    prefix="/api"
+)
+
+app.include_router(
+    doctor_verification.router,
     prefix="/api"
 )
 

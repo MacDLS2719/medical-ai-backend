@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from app.services.europe_pmc_service import EuropePMCService
 from app.services.who_ictrp_service import WHOICTRPService
-from app.schemas.medical import NormalizedDocument
+from app.schemas.Normalizacion_datos_libreria import NormalizedDocument
 
 async def test_europe_pmc():
     """Test de Europe PMC Service"""

@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.models.user import User
-from app.services.medical_notification_service import MedicalNotificationService
+from app.services.rag.datos.medical_notification_service import MedicalNotificationService
 from app.core.auth import get_current_user
 from app.core.i18n import normalize_language
 

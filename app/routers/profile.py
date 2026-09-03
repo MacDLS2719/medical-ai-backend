@@ -34,6 +34,17 @@ def get_profile(
             })
     elif current_user.role == "doctor":
         raise HTTPException(status_code=403, detail="Doctors must use /api/doctor-profile endpoint")
+    elif current_user.role == "verifier":
+        profile_data.update({
+            "first_name": "Verificador",
+            "last_name": "Oficial",
+            "document_number": "VER-27",
+            "gender": "N/A",
+            "birth_date": None,
+            "address": "Oficina Central de Verificación",
+            "latitude": None,
+            "longitude": None,
+        })
     
     if "first_name" not in profile_data:
         raise HTTPException(status_code=404, detail="Profile details not found for this user.")

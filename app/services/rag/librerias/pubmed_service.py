@@ -2,15 +2,15 @@ import httpx
 import xmltodict
 from typing import List, Optional
 from os import getenv
-from app.schemas.medical import NormalizedDocument
+from app.services.rag.schemas import NormalizedDocument
 
-class CochraneService:
+class PubMedService:
     BASE_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 
     def __init__(self):
         self.api_key = getenv("PUBMED_API_KEY", "")
-        self.email = getenv("PUBMED_EMAIL", "")
-        self.tool = getenv("PUBMED_TOOL", "")
+        self.email = getenv("PUBMED_EMAIL", "developer@example.com")
+        self.tool = getenv("PUBMED_TOOL", "rag_app")
 
     def _get_base_params(self) -> dict:
         params = {
@@ -21,18 +21,8 @@ class CochraneService:
             params["api_key"] = self.api_key
         return params
 
-    async def search_and_fetch(self, query: str, max_results: int = 5) -> List[NormalizedDocument]:
-        """Busca revisiones sistemáticas en Cochrane Library a través de NCBI."""
-        # Filtro estricto para recuperar únicamente Revisiones de Cochrane
-        cochrane_query = f'({query}) AND "Cochrane Database Syst Rev"[Journal]'
-
-        pmids = await self._search_pmids(cochrane_query, max_results)
-        if not pmids:
-            return []
-
-        return await self._fetch_details(pmids)
-
-    async def _search_pmids(self, query: str, max_results: int) -> List[str]:
+    async def search_pmids(self, query: str, max_results: int = 5) -> List[str]:
+        """Paso 1: Buscar artículos y retornar lista de PMIDs."""
         url = f"{self.BASE_URL}/esearch.fcgi"
         params = {
             **self._get_base_params(),
@@ -48,7 +38,11 @@ class CochraneService:
             data = response.json()
             return data.get("esearchresult", {}).get("idlist", [])
 
-    async def _fetch_details(self, pmid_list: List[str]) -> List[NormalizedDocument]:
+    async def fetch_details(self, pmid_list: List[str]) -> List[NormalizedDocument]:
+        """Paso 2: Obtener detalles del artículo y normalizar estructura."""
+        if not pmid_list:
+            return []
+
         url = f"{self.BASE_URL}/efetch.fcgi"
         params = {
             **self._get_base_params(),
@@ -60,9 +54,12 @@ class CochraneService:
         async with httpx.AsyncClient() as client:
             response = await client.get(url, params=params)
             response.raise_for_status()
-
+            
+            # Convertir XML a Diccionario de Python
             parsed_data = xmltodict.parse(response.text)
+            
             articles = parsed_data.get("PubmedArticleSet", {}).get("PubmedArticle", [])
+            # Asegurar que siempre sea una lista cuando hay 1 solo resultado
             if isinstance(articles, dict):
                 articles = [articles]
 
@@ -75,26 +72,18 @@ class CochraneService:
             return normalized_docs
 
     def _parse_article(self, article: dict) -> Optional[NormalizedDocument]:
+        """Procesar y limpiar los campos del diccionario XML."""
         try:
             medline = article.get("MedlineCitation", {})
             article_data = medline.get("Article", {})
 
-            # ID y DOI
+            # ID (PMID)
             pmid = str(medline.get("PMID", {}).get("#text", medline.get("PMID", "")))
-            
-            # Intentar obtener el DOI
-            doi = None
-            article_ids = article.get("PubmedData", {}).get("ArticleIdList", {}).get("ArticleId", [])
-            if isinstance(article_ids, dict):
-                article_ids = [article_ids]
-            for aid in article_ids:
-                if isinstance(aid, dict) and aid.get("@IdType") == "doi":
-                    doi = aid.get("#text")
 
             # Título
             title = article_data.get("ArticleTitle", "Sin título")
 
-            # Abstract
+            # Abstract (Manejar casos de abstracts estructurados o texto simple)
             abstract_raw = article_data.get("Abstract", {}).get("AbstractText", "")
             if isinstance(abstract_raw, list):
                 abstract = " ".join([item.get("#text", str(item)) if isinstance(item, dict) else str(item) for item in abstract_raw])
@@ -114,27 +103,30 @@ class CochraneService:
                 if last_name:
                     authors.append(f"{fore_name} {last_name}".strip())
 
-            # Fecha
+            # Fecha de publicación
             pub_date_data = article_data.get("Journal", {}).get("JournalIssue", {}).get("PubDate", {})
             year = pub_date_data.get("Year", "")
             month = pub_date_data.get("Month", "01")
             pub_date = f"{year}-{month}" if year else None
 
-            url = f"https://www.cochranelibrary.com/cdsr/doi/{doi}/full" if doi else f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/"
+            # Revista
+            journal_title = article_data.get("Journal", {}).get("Title", "")
 
             return NormalizedDocument(
-                source_id=doi if doi else pmid,
-                source_type="cochrane",
+                source_id=pmid,
+                source_type="pubmed",
                 title=title,
                 abstract=abstract if abstract else "Sin resumen disponible.",
                 authors=authors,
                 publication_date=pub_date,
-                url=url,
-                metadata={
-                    "pubmed_id": pmid,
-                    "type": "Systematic Review"
-                }
+                url=f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/",
+                metadata={"journal": journal_title}
             )
         except Exception as e:
-            print(f"Error procesando revisión Cochrane: {e}")
+            print(f"Error procesando artículo: {e}")
             return None
+
+    async def search_and_fetch(self, query: str, max_results: int = 5) -> List[NormalizedDocument]:
+        """Método unificado de consulta completa."""
+        pmids = await self.search_pmids(query, max_results=max_results)
+        return await self.fetch_details(pmids)

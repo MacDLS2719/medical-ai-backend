@@ -65,3 +65,7 @@ logs/
 htmlcov/
 .nox/
 .tox/
+
+# Google Cloud credentials
+app/credentials/
+*.json

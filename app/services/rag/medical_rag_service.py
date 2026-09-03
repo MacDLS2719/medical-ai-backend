@@ -1,14 +1,33 @@
-from typing import Optional
+from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
-from app.services.medical_search_service import MedicalSearchService
-from app.services.medical_document_service import MedicalDocumentService
-from app.services.medical_query_service import MedicalQueryService
-from app.services.medical_response_service import MedicalResponseService
-from app.services.groq_service import GroqService
+from app.services.rag.query_normalization_service import (
+    QueryNormalizationService,
+)
+from app.services.rag.medical_search_orchestrator import (
+    MedicalSearchOrchestrator,
+)
+from app.services.rag.result_presenter_service import (
+    ResultPresenterService,
+)
 
-from app.schemas.medical import NormalizedDocument
+from app.services.rag.datos.medical_document_service import (
+    MedicalDocumentService,
+)
+from app.services.rag.datos.medical_query_service import (
+    MedicalQueryService,
+)
+
+from app.services.rag.datos.medical_response_service import (
+    MedicalResponseService,
+)
+
+from app.services.rag.groq_service import GroqService
+
+from app.services.rag.schemas import (
+    NormalizedDocument,
+)
 
 
 class MedicalRAGService:
@@ -25,7 +44,9 @@ class MedicalRAGService:
     def __init__(
         self,
         db: Session,
-        medical_search_service: MedicalSearchService,
+        query_normalization_service: QueryNormalizationService,
+        medical_search_orchestrator: MedicalSearchOrchestrator,
+        result_presenter_service: ResultPresenterService,
         medical_document_service: MedicalDocumentService,
         medical_query_service: MedicalQueryService,
         medical_response_service: MedicalResponseService,
@@ -33,10 +54,30 @@ class MedicalRAGService:
     ):
         self.db = db
 
-        self.medical_search_service = medical_search_service
-        self.medical_document_service = medical_document_service
-        self.medical_query_service = medical_query_service
-        self.medical_response_service = medical_response_service
+        self.query_normalization_service = (
+            query_normalization_service
+        )
+
+        self.medical_search_orchestrator = (
+            medical_search_orchestrator
+        )
+
+        self.result_presenter_service = (
+            result_presenter_service
+        )
+
+        self.medical_document_service = (
+            medical_document_service
+        )
+
+        self.medical_query_service = (
+            medical_query_service
+        )
+
+        self.medical_response_service = (
+            medical_response_service
+        )
+
         self.groq_service = groq_service
 
     # ==============================================================
@@ -50,44 +91,87 @@ class MedicalRAGService:
         query_type: str = "general",
         max_results: int = 10,
         lang: str = "es",
+        sources: Optional[List[str]] = None,
     ) -> dict:
+
+        # ==========================================================
+        # 1. NORMALIZAR CONSULTA
+        # ==========================================================
+
+        normalized = (
+            self.query_normalization_service.normalize(
+                query
+            )
+        )
+
+        normalized_query = (
+            normalized.get("normalized_query")
+            or query
+        )
+
+        detected_language = (
+            normalized.get("language")
+            or lang
+        )
+
+        detected_query_type = (
+            normalized.get("query_type")
+            or "unknown"
+        )
+
+        # Si el usuario no especificó un tipo concreto,
+        # utilizamos la clasificación realizada por normalización.
+        effective_query_type = (
+            detected_query_type
+            if detected_query_type != "unknown"
+            else query_type
+        )
+
+        # ==========================================================
+        # 2. CREAR CONSULTA EN BASE DE DATOS
+        # ==========================================================
 
         medical_query = self.medical_query_service.create_query(
             user_id=user_id,
             query=query,
-            query_type=query_type,
+            query_type=effective_query_type,
             status="processing",
         )
 
         try:
 
             # ======================================================
-            # 1. BUSCAR EN PUBMED + CLINICALTRIALS + COCHRANE
+            # 3. BUSCAR EN LAS FUENTES
             # ======================================================
 
-            search_result = await self.medical_search_service.search(
-                query=query,
-                max_results=max_results,
-                target_lang=lang,
+            search_result = (
+                await self.medical_search_orchestrator.search(
+                    query=normalized_query,
+                    sources=sources,
+                    max_results=max_results,
+                )
             )
 
-            documents = search_result.get(
-                "results",
-                [],
+            # ======================================================
+            # 4. ORGANIZAR RESULTADOS
+            # ======================================================
+
+            presented_result = (
+                self.result_presenter_service.present(
+                    search_result
+                )
             )
 
-            if not documents:
-                documents = []
+            documents = (
+                presented_result.get(
+                    "results",
+                    [],
+                )
+                or []
+            )
 
             # ======================================================
-            # 2 & 3. PERSISTENCIA
-            # ======================================================
-
-            # Actualmente utilizamos los documentos directamente
-            # en memoria para el proceso RAG.
-
-            # ======================================================
-            # 4. CONSTRUIR CONTEXTO PARA EL RAG
+            # 5. CONSTRUIR CONTEXTO PARA EL RAG
             # ======================================================
 
             context = self._build_context(
@@ -95,7 +179,7 @@ class MedicalRAGService:
             )
 
             # ======================================================
-            # 5. CONSTRUIR PROMPT
+            # 6. CONSTRUIR PROMPT
             # ======================================================
 
             prompt = self._build_prompt(
@@ -106,91 +190,114 @@ class MedicalRAGService:
             )
 
             # ======================================================
-            # 6. GENERAR RESPUESTA CON GROQ
+            # 7. GENERAR RESPUESTA CON GROQ
             # ======================================================
 
-            groq_result = self.groq_service.generate_response(
+            groq_result = (
+                self.groq_service.generate_response(
 
-                prompt=prompt,
+                    prompt=prompt,
 
-                system_prompt=(
-                    "Eres un asistente médico especializado "
-                    "en análisis de evidencia científica. "
+                    system_prompt=(
+                        "Eres un asistente médico especializado "
+                        "en análisis de evidencia científica. "
 
-                    "Tu función es analizar los documentos "
-                    "científicos recuperados por el sistema "
-                    "y sintetizar la información relevante "
-                    "para responder la consulta del usuario. "
+                        "Tu función es analizar los documentos "
+                        "científicos recuperados por el sistema "
+                        "y sintetizar la información relevante "
+                        "para responder la consulta del usuario. "
 
-                    "Utiliza exclusivamente la información "
-                    "contenida en los documentos proporcionados "
-                    "en el contexto. "
+                        "Utiliza exclusivamente la información "
+                        "contenida en los documentos proporcionados "
+                        "en el contexto. "
 
-                    "No inventes estudios, autores, resultados, "
-                    "estadísticas, tratamientos ni referencias. "
+                        "No inventes estudios, autores, resultados, "
+                        "estadísticas, tratamientos ni referencias. "
 
-                    "Cuando existan documentos recuperados, "
-                    "analízalos y explica sus principales "
-                    "hallazgos. "
+                        "Cuando existan documentos recuperados, "
+                        "analízalos y explica sus principales "
+                        "hallazgos. "
 
-                    "No respondas automáticamente que no existe "
-                    "evidencia cuando existan documentos recuperados. "
+                        "No respondas automáticamente que no existe "
+                        "evidencia cuando existan documentos "
+                        "recuperados. "
 
-                    "Diferencia claramente entre artículos "
-                    "científicos de PubMed, estudios o ensayos "
-                    "clínicos de ClinicalTrials.gov y revisiones "
-                    "sistemáticas de Cochrane. "
+                        "Diferencia claramente entre las diferentes "
+                        "fuentes científicas y regulatorias "
+                        "recuperadas por el sistema. "
 
-                    "Cuando sea posible, relaciona los hallazgos "
-                    "con el título real del documento que los "
-                    "respalda. "
+                        "PubMed y Europe PMC pueden contener "
+                        "artículos y publicaciones científicas. "
 
-                    "Si existen resultados contradictorios, "
-                    "explícalos. "
+                        "ClinicalTrials.gov y WHO ICTRP corresponden "
+                        "principalmente a registros de estudios "
+                        "y ensayos clínicos. "
 
-                    "Si la evidencia es realmente limitada, "
-                    "indícalo y explica por qué. "
+                        "Cochrane contiene principalmente revisiones "
+                        "sistemáticas. "
 
-                    "Responde en el idioma solicitado por el usuario. "
+                        "OpenFDA contiene información regulatoria "
+                        "y de medicamentos. "
 
-                    "Responde en lenguaje comprensible. "
+                        "Cuando sea posible, relaciona los hallazgos "
+                        "con el título real del documento que los "
+                        "respalda. "
 
-                    "No realices diagnósticos personalizados. "
-                ),
+                        "Si existen resultados contradictorios, "
+                        "explícalos. "
 
-                temperature=0.2,
+                        "Si la evidencia es realmente limitada, "
+                        "indícalo y explica por qué. "
 
-                max_completion_tokens=2048,
+                        "Responde en el idioma solicitado por "
+                        "el usuario. "
+
+                        "Responde en lenguaje comprensible. "
+
+                        "No realices diagnósticos personalizados."
+                    ),
+
+                    temperature=0.2,
+
+                    max_completion_tokens=2048,
+                )
             )
 
-            response_text = groq_result.get(
-                "response",
-                "",
+            response_text = (
+                groq_result.get(
+                    "response",
+                    "",
+                )
             )
 
             # ======================================================
             # FALLBACK SI GROQ DEVUELVE RESPUESTA VACÍA
             # ======================================================
 
-            if not response_text or not response_text.strip():
+            if (
+                not response_text
+                or not response_text.strip()
+            ):
 
                 if documents:
 
                     response_text = (
-                        f"Se encontraron {len(documents)} "
-                        f"documentos científicos relacionados "
-                        f"con tu consulta en PubMed, "
-                        f"ClinicalTrials.gov y Cochrane. "
-                        f"Puedes revisar las fuentes listadas "
-                        f"a continuación para obtener más información."
+                        f"Se encontraron "
+                        f"{len(documents)} documentos "
+                        f"científicos relacionados con "
+                        f"tu consulta en las fuentes "
+                        f"consultadas. Puedes revisar "
+                        f"las fuentes listadas a continuación "
+                        f"para obtener más información."
                     )
 
                 else:
 
                     response_text = (
-                        "No se encontraron documentos científicos "
-                        "relacionados en las fuentes consultadas. "
-                        "Te recomiendo reformular tu consulta."
+                        "No se encontraron documentos "
+                        "científicos relacionados en las "
+                        "fuentes consultadas. Te recomiendo "
+                        "reformular tu consulta."
                     )
 
             tokens_used = groq_result.get(
@@ -202,7 +309,7 @@ class MedicalRAGService:
             )
 
             # ======================================================
-            # 7. GUARDAR RESPUESTA EN BASE DE DATOS
+            # 8. GUARDAR RESPUESTA
             # ======================================================
 
             self.medical_response_service.create_response(
@@ -212,7 +319,7 @@ class MedicalRAGService:
             )
 
             # ======================================================
-            # 8. ACTUALIZAR ESTADO
+            # 9. ACTUALIZAR ESTADO
             # ======================================================
 
             self.medical_query_service.update_status(
@@ -221,15 +328,17 @@ class MedicalRAGService:
             )
 
             # ======================================================
-            # 9. RESUMEN DE FUENTES
+            # 10. RESUMEN DE FUENTES
             # ======================================================
 
-            source_summary = self._build_source_summary(
-                documents
+            source_summary = (
+                self._build_source_summary(
+                    documents
+                )
             )
 
             # ======================================================
-            # 10. RESPUESTA FINAL
+            # 11. RESPUESTA FINAL
             # ======================================================
 
             return {
@@ -239,6 +348,12 @@ class MedicalRAGService:
                 "query_id": medical_query.id,
 
                 "query": query,
+
+                "normalized_query": normalized_query,
+
+                "language": detected_language,
+
+                "query_type": effective_query_type,
 
                 "response": response_text,
 
@@ -250,13 +365,20 @@ class MedicalRAGService:
 
                 "source_summary": source_summary,
 
-                "sources": search_result.get(
+                "sources": presented_result.get(
                     "sources",
                     {},
                 ),
 
+                "source_errors": presented_result.get(
+                    "errors",
+                    {},
+                ),
+
                 "documents": [
-                    self._document_to_dict(document)
+                    self._document_to_dict(
+                        document
+                    )
                     for document in documents
                 ],
             }
@@ -286,10 +408,6 @@ class MedicalRAGService:
                 "No existen documentos disponibles en las "
                 "fuentes consultadas para esta consulta."
             )
-
-        # ==========================================================
-        # LIMITAR DOCUMENTOS ENVIADOS A GROQ
-        # ==========================================================
 
         context_documents = documents[
             :self.MAX_CONTEXT_DOCUMENTS
@@ -334,10 +452,6 @@ class MedicalRAGService:
                 :self.MAX_ABSTRACT_CHARS
             ]
 
-            # ======================================================
-            # AUTORES
-            # ======================================================
-
             authors = getattr(
                 document,
                 "authors",
@@ -366,9 +480,7 @@ class MedicalRAGService:
 
                     authors_text = str(
                         authors
-                    )[
-                        :1000
-                    ]
+                    )[:1000]
 
             else:
 
@@ -435,10 +547,6 @@ URL:
             context_parts
         )
 
-        # ==========================================================
-        # DEBUG
-        # ==========================================================
-
         print(
             f"RAG context: "
             f"{len(context_documents)} documentos "
@@ -464,10 +572,6 @@ URL:
         lang: str = "es",
     ) -> str:
 
-        # ==========================================================
-        # SIN DOCUMENTOS
-        # ==========================================================
-
         if not documents:
 
             return f"""
@@ -492,6 +596,9 @@ las fuentes conectadas:
 - PubMed
 - ClinicalTrials.gov
 - Cochrane
+- Europe PMC
+- OpenFDA
+- WHO ICTRP
 
 
 INSTRUCCIONES
@@ -510,10 +617,6 @@ No inventes referencias.
 No intentes responder utilizando conocimiento externo
 a los documentos recuperados.
 """
-
-        # ==========================================================
-        # CON DOCUMENTOS
-        # ==========================================================
 
         context_document_count = min(
             len(documents),
@@ -579,9 +682,6 @@ de determinar si existe o no evidencia suficiente.
 ESTRUCTURA DE LA RESPUESTA
 ==================================================
 
-Genera la respuesta utilizando esta estructura:
-
-
 1. RESPUESTA
 
 Explica primero y de forma clara qué indican los
@@ -606,16 +706,21 @@ estudio o documento que respalda cada hallazgo.
 Explica qué evidencia proviene de cada fuente:
 
 - PubMed
+- Europe PMC
 - ClinicalTrials.gov
+- WHO ICTRP
 - Cochrane
+- OpenFDA
 
-Diferencia claramente:
+Diferencia claramente entre:
 
 - artículos científicos
 - estudios observacionales
 - ensayos clínicos
 - registros de estudios clínicos
 - revisiones sistemáticas
+- información regulatoria
+- información sobre medicamentos
 
 
 4. PRINCIPALES ESTUDIOS
@@ -688,23 +793,25 @@ REGLAS CIENTÍFICAS
 
 12. Cuando sea posible, indica la fuente.
 
-13. Diferencia PubMed de ClinicalTrials.gov
-    y Cochrane.
+13. Diferencia claramente cada fuente.
 
-14. Un registro de ClinicalTrials.gov no debe
-    presentarse como si fuera necesariamente
-    un artículo publicado.
+14. Un registro de ClinicalTrials.gov o WHO ICTRP
+    no debe presentarse necesariamente como un
+    artículo publicado.
 
 15. Una revisión de Cochrane debe identificarse
     como revisión sistemática.
 
-16. Si solamente se encontraron artículos de PubMed,
+16. OpenFDA debe identificarse como fuente
+    regulatoria o de información sobre medicamentos.
+
+17. Si solamente se encontraron artículos científicos,
     indícalo.
 
-17. Si se encontraron ensayos clínicos, indícalos
+18. Si se encontraron ensayos clínicos, indícalos
     claramente.
 
-18. Si se encontraron revisiones de Cochrane,
+19. Si se encontraron revisiones sistemáticas,
     indícalas claramente.
 
 
@@ -726,13 +833,6 @@ Si existen documentos recuperados:
 3. Indica qué aspectos sí pueden responderse.
 4. Indica qué aspectos no pueden determinarse.
 5. Explica las limitaciones.
-
-
-Solamente utiliza una respuesta de ausencia de
-evidencia cuando realmente no existan documentos
-relevantes o cuando los documentos recuperados
-no permitan obtener ninguna información útil
-para abordar la consulta.
 
 
 ==================================================
@@ -782,6 +882,9 @@ Por lo tanto, NO inventes referencias adicionales.
             "pubmed": 0,
             "clinical_trials": 0,
             "cochrane": 0,
+            "europe_pmc": 0,
+            "openfda": 0,
+            "who_ictrp": 0,
             "total": 0,
         }
 
@@ -813,10 +916,33 @@ Por lo tanto, NO inventes referencias adicionales.
 
                 summary["cochrane"] += 1
 
-        summary["total"] = (
-            summary["pubmed"]
-            + summary["clinical_trials"]
-            + summary["cochrane"]
+            elif source_type in [
+                "europe_pmc",
+                "europepmc",
+                "europe pmc",
+            ]:
+
+                summary["europe_pmc"] += 1
+
+            elif source_type in [
+                "openfda",
+                "open_fda",
+            ]:
+
+                summary["openfda"] += 1
+
+            elif source_type in [
+                "who_ictrp",
+                "who-ictrp",
+                "who ictrp",
+            ]:
+
+                summary["who_ictrp"] += 1
+
+        summary["total"] = sum(
+            value
+            for key, value in summary.items()
+            if key != "total"
         )
 
         return summary
@@ -841,6 +967,14 @@ Por lo tanto, NO inventes referencias adicionales.
             return "Artículo científico"
 
         if source in [
+            "europe_pmc",
+            "europepmc",
+            "europe pmc",
+        ]:
+
+            return "Artículo / publicación científica"
+
+        if source in [
             "clinical_trials",
             "clinicaltrials",
             "clinical_trials_gov",
@@ -849,9 +983,24 @@ Por lo tanto, NO inventes referencias adicionales.
 
             return "Estudio / ensayo clínico"
 
+        if source in [
+            "who_ictrp",
+            "who-ictrp",
+            "who ictrp",
+        ]:
+
+            return "Registro de estudio clínico"
+
         if source == "cochrane":
 
             return "Revisión sistemática"
+
+        if source in [
+            "openfda",
+            "open_fda",
+        ]:
+
+            return "Información regulatoria / medicamento"
 
         return "Documento científico"
 
