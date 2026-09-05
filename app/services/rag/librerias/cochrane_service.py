@@ -92,7 +92,13 @@ class CochraneService:
                     doi = aid.get("#text")
 
             # Título
-            title = article_data.get("ArticleTitle", "Sin título")
+            title_raw = article_data.get("ArticleTitle", "Sin título")
+            if isinstance(title_raw, dict):
+                title = title_raw.get("#text", "Sin título")
+            elif isinstance(title_raw, list):
+                title = " ".join([item.get("#text", str(item)) if isinstance(item, dict) else str(item) for item in title_raw])
+            else:
+                title = str(title_raw)
 
             # Abstract
             abstract_raw = article_data.get("Abstract", {}).get("AbstractText", "")

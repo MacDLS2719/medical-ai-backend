@@ -51,6 +51,27 @@ class QueryNormalizationService:
         "últimos",
         "ultimos",
         "recientes",
+        "avances",
+        "avance",
+        "novedades",
+        "el",
+        "la",
+        "los",
+        "las",
+        "un",
+        "una",
+        "unos",
+        "unas",
+        "de",
+        "del",
+        "al",
+        "para",
+        "con",
+        "por",
+        "qué",
+        "que",
+        "como",
+        "cómo",
 
         # Inglés
         "search",
@@ -243,6 +264,9 @@ class QueryNormalizationService:
             " ",
             normalized_query,
         ).strip()
+
+        # Quitar puntuación suelta al final (ej: "cáncer." → "cáncer")
+        normalized_query = normalized_query.rstrip(".,;:!?")
 
         return normalized_query
 

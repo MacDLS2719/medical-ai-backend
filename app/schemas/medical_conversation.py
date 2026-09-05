@@ -1,10 +1,6 @@
 from datetime import datetime
-from pydantic import BaseModel
-
-
-class ConversationCreate(BaseModel):
-    patient_id: int
-    doctor_id: int
+from typing import Optional
+from pydantic import BaseModel, model_validator
 
 
 class ConversationResponse(BaseModel):
@@ -13,10 +9,32 @@ class ConversationResponse(BaseModel):
     doctor_id: int
     status: str
     created_at: datetime
+    doctor_name: Optional[str] = None
+    patient_name: Optional[str] = None
+
+    @model_validator(mode='before')
+    @classmethod
+    def extract_names(cls, obj):
+        # obj es el ORM object (MedicalConversation)
+        if hasattr(obj, 'doctor') and obj.doctor is not None:
+            user = obj.doctor  # relación -> User
+            doctor_profile = getattr(user, 'doctor', None)
+            if doctor_profile:
+                obj.__dict__['doctor_name'] = f"{doctor_profile.first_name} {doctor_profile.last_name}"
+        if hasattr(obj, 'patient') and obj.patient is not None:
+            user = obj.patient  # relación -> User
+            patient_profile = getattr(user, 'patient', None)
+            if patient_profile:
+                obj.__dict__['patient_name'] = f"{patient_profile.first_name} {patient_profile.last_name}"
+        return obj
 
     class Config:
         from_attributes = True
 
+
+class ConversationCreate(BaseModel):
+    patient_id: int
+    doctor_id: int
 
 class MessageCreate(BaseModel):
     message: str

@@ -1,3 +1,4 @@
+import asyncio
 import json
 from typing import List, Optional
 
@@ -6,13 +7,13 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.services.rag.schemas import MedicalSearchRequest
-from app.services.rag.medical_search_orchestrator import MedicalSearchOrchestrator
 
 from app.core.database import get_db
 from app.models.user import User
 from app.models.patient import Patient
 from app.models.doctor import Doctor
 from app.core.i18n import normalize_language
+
 
 
 router = APIRouter(
@@ -70,72 +71,145 @@ def _resolve_sources(source: Optional[str]) -> Optional[List[str]]:
 # GENERADOR DE STREAMING (NDJSON)
 # ==============================================================
 
+def _extract_primary_term(query: str) -> str:
+    """
+    Extrae el primer término médico de una query compuesta.
+    Ej: 'cáncer AND Endocrinology' → 'cáncer'
+    Ej: 'diabetes OR hypertension' → 'diabetes'
+    Ej: 'heart failure' → 'heart failure'
+    """
+    import re
+    # Cortar en el primer AND / OR / NOT booleano
+    term = re.split(r'\s+(?:AND|OR|NOT)\s+', query, maxsplit=1, flags=re.IGNORECASE)[0]
+    # Quitar puntuación suelta al final
+    term = term.strip().rstrip('.,;:')
+    return term or query
+
+
 async def _stream_search(
     query: str,
     sources: Optional[List[str]],
     max_results: int,
 ):
     """
-    Ejecuta la búsqueda en el orchestrador y transmite los
-    resultados como NDJSON línea a línea.
+    Ejecuta la búsqueda en paralelo en todas las fuentes seleccionadas
+    y transmite los resultados de cada fuente EN CUANTO terminan,
+    sin esperar a que todas las demás fuentes finalicen.
 
-    Formato de cada línea:
-        {"type": "results", "data": [...]}
-        {"type": "error",   "source": "pubmed", "message": "..."}
+    - PubMed / Cochrane / EuropePMC / ClinicalTrials: reciben la query booleana completa.
+    - OpenFDA: recibe solo el primer término médico (acepta nombres de medicamentos).
+    - WHO ICTRP: deshabilitado temporalmente (API v2 devuelve 404).
+
+    Formato de cada línea NDJSON:
+        {"type": "results", "source": "pubmed",  "data": [...]}
+        {"type": "error",   "source": "cochrane", "message": "..."}
     """
-    orchestrator = MedicalSearchOrchestrator()
+    from app.services.rag.librerias.pubmed_service import PubMedService
+    from app.services.rag.librerias.cochrane_service import CochraneService
+    from app.services.rag.librerias.clinical_trials_service import ClinicalTrialsService
+    from app.services.rag.librerias.europe_pmc_service import EuropePMCService
+    from app.services.rag.librerias.openfda_service import OpenFDAService
+    from datetime import date, datetime
 
-    try:
-        result = await orchestrator.search(
-            query=query,
-            sources=sources,
-            max_results=max_results,
-        )
+    # Término primario simple para fuentes que no soportan booleanos
+    primary_term = _extract_primary_term(query)
 
-        errors: dict = result.get("errors", {})
-        all_results: list = result.get("results", [])
+    # Mapa de fuente → (servicio, query a usar)
+    ALL_SOURCES: dict[str, tuple] = {
+        "pubmed":          (PubMedService(),          query),
+        "cochrane":        (CochraneService(),        query),
+        "clinical_trials": (ClinicalTrialsService(),  query),
+        "europe_pmc":      (EuropePMCService(),       query),
+        # OpenFDA solo acepta términos simples, no booleanos
+        "openfda":         (OpenFDAService(),         primary_term),
+        # WHO ICTRP API v2 devuelve 404 — deshabilitado hasta que lo corrijan
+        # "who_ictrp":    (WHOICTRPService(),         query),
+    }
 
-        # ----------------------------------------------------------
-        # Emitir errores por fuente (si los hay)
-        # ----------------------------------------------------------
-        for source_name, error_msg in errors.items():
-            yield json.dumps(
-                {
-                    "type": "error",
-                    "source": source_name,
-                    "message": error_msg,
-                },
-                ensure_ascii=False,
-            ) + "\n"
+    # Si se pide una fuente concreta usar solo esa, sino todas
+    active_sources = (
+        {k: v for k, v in ALL_SOURCES.items() if k in sources}
+        if sources
+        else ALL_SOURCES
+    )
 
-        # ----------------------------------------------------------
-        # Emitir los resultados
-        # ----------------------------------------------------------
-        if all_results:
-            docs = []
-            for doc in all_results:
-                if hasattr(doc, "model_dump"):
-                    docs.append(doc.model_dump())
-                elif hasattr(doc, "dict"):
-                    docs.append(doc.dict())
-                else:
-                    docs.append(doc)
+    print(f"PRIMARY TERM : {primary_term!r}")
+    print(f"FULL QUERY   : {query!r}")
 
-            yield json.dumps(
-                {"type": "results", "data": docs},
-                ensure_ascii=False,
-                default=str,
-            ) + "\n"
+    # Cola para recibir resultados de cada fuente en cuanto termina
+    queue: asyncio.Queue = asyncio.Queue()
 
-    except Exception as exc:
-        yield json.dumps(
-            {
-                "type": "error",
-                "source": "orchestrator",
-                "message": str(exc),
-            },
-            ensure_ascii=False,
-        ) + "\n"
+    def _serialize(doc) -> dict:
+        if hasattr(doc, "model_dump"):
+            return doc.model_dump()
+        if hasattr(doc, "dict"):
+            return doc.dict()
+        return doc
+
+    def _is_future(doc) -> bool:
+        """Descarta documentos con fecha futura."""
+        today = date.today()
+        raw = getattr(doc, "publication_date", None) or getattr(doc, "date", None)
+        if not raw:
+            return False
+        try:
+            if isinstance(raw, datetime):
+                return raw.date() > today
+            if isinstance(raw, date):
+                return raw > today
+            if isinstance(raw, str):
+                d = datetime.strptime(raw[:10], "%Y-%m-%d").date()
+                return d > today
+        except Exception:
+            pass
+        return False
+
+    async def _fetch_source(source_name: str, service, source_query: str):
+        """Busca en una fuente y pone el resultado en la cola."""
+        try:
+            results = await asyncio.wait_for(
+                service.search_and_fetch(
+                    query=source_query,
+                    max_results=max_results,
+                ),
+                timeout=20.0
+            )
+            results = [r for r in (results or []) if not _is_future(r)]
+            await queue.put(("ok", source_name, results))
+        except asyncio.TimeoutError:
+            await queue.put(("error", source_name, "Timeout (20s)"))
+        except Exception as exc:
+            await queue.put(("error", source_name, str(exc)))
+
+    # Lanzar todas las fuentes en paralelo
+    tasks = [
+        asyncio.create_task(_fetch_source(name, svc, src_query))
+        for name, (svc, src_query) in active_sources.items()
+    ]
+
+    total = len(tasks)
+    finished = 0
+
+    # Emitir resultados según van llegando
+    while finished < total:
+        kind, source_name, payload = await queue.get()
+        finished += 1
+
+        if kind == "error":
+            # Solo logueamos internamente, no enviamos errores al frontend
+            print(f"Source error [{source_name}]: {payload}")
+        else:
+            if payload:
+                docs = [_serialize(d) for d in payload]
+                yield json.dumps(
+                    {"type": "results", "source": source_name, "data": docs},
+                    ensure_ascii=False,
+                    default=str,
+                ) + "\n"
+
+    # Asegurarse de que todas las tasks terminaron
+    await asyncio.gather(*tasks, return_exceptions=True)
+
 
 
 # ==============================================================
@@ -173,7 +247,11 @@ async def medical_search(
     # ----------------------------------------------------------
     # 3. CONSTRUIR QUERY SEGÚN ROL
     # ----------------------------------------------------------
-    query: str = request.query or ""
+    raw_query: str = request.query or ""
+    
+    from app.services.rag.query_normalization_service import QueryNormalizationService
+    normalizer = QueryNormalizationService()
+    query = normalizer.clean_query(raw_query) if raw_query else ""
 
     if user.role == "patient":
         patient = (
@@ -191,11 +269,8 @@ async def medical_search(
 
             if pathologies:
                 pathology_str = " OR ".join(pathologies)
-                query = (
-                    f"({query}) AND ({pathology_str})"
-                    if query
-                    else pathology_str
-                )
+                # No usamos paréntesis duros porque rompen OpenFDA
+                query = f"{query} AND {pathology_str}" if query else pathology_str
             else:
                 raise HTTPException(
                     status_code=403,
@@ -216,11 +291,7 @@ async def medical_search(
 
         if doctor and doctor.specialty:
             specialty_str = doctor.specialty
-            query = (
-                f"({query}) AND ({specialty_str})"
-                if query
-                else specialty_str
-            )
+            query = f"{query} AND {specialty_str}" if query else specialty_str
         else:
             if not query:
                 raise HTTPException(

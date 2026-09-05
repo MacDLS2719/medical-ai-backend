@@ -16,6 +16,7 @@ from app.services.medical_conversation_service import (
     MedicalConversationService
 )
 from app.services.cloudinary_service import cloudinary_service
+from app.services.daily_service import create_daily_room, delete_daily_room
 from app.routers.websockets import manager as ws_manager
 from datetime import datetime
 
@@ -153,20 +154,30 @@ async def create_video_call(
         conversation = MedicalConversationService.get_conversation(db, conversation_id, actual_sender_id)
         if not conversation:
             raise HTTPException(status_code=404, detail="Conversación no encontrada")
-            
+
         receiver_id = conversation.doctor_id if conversation.patient_id == actual_sender_id else conversation.patient_id
-        
+
+        # Crear sala real en Daily.co
         timestamp = int(datetime.now().timestamp())
-        room_name = f"MedicalChat-{conversation_id}-{timestamp}"
-            
+        room_name = f"medicalchat-{conversation_id}-{timestamp}"
+        daily_room = await create_daily_room(room_name)
+        room_url = daily_room.get("url")   # URL lista para abrir en iframe
+        room_name_final = daily_room.get("name", room_name)
+
+        # Notificar al receptor vía WebSocket
         await ws_manager.send_personal_message({
             "action": "INCOMING_CALL",
             "from_user": actual_sender_id,
             "conversation_id": conversation_id,
-            "room_name": room_name
+            "room_name": room_name_final,
+            "room_url": room_url
         }, receiver_id)
-        
-        return {"status": "calling", "room_name": room_name}
+
+        return {
+            "status": "calling",
+            "room_name": room_name_final,
+            "room_url": room_url
+        }
     except ValueError as e:
         raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
