@@ -31,10 +31,7 @@ from app.schemas.doctor_profile import (
     DoctorCreateRequest,
 )
 
-from app.services.storage_service import (
-    StorageService,
-    get_storage_service,
-)
+from app.services.cloudinary_service import cloudinary_service
 
 
 router = APIRouter(
@@ -540,12 +537,9 @@ async def upload_media(
     file: UploadFile = File(...),
     doctor: Doctor = Depends(get_current_doctor),
     db: Session = Depends(get_db),
-    storage: StorageService = Depends(
-        get_storage_service
-    ),
 ):
     """
-    Sube archivos multimedia del perfil del doctor.
+    Sube archivos multimedia del perfil del doctor a Cloudinary.
 
     Ejemplos de media_type:
 
@@ -562,20 +556,20 @@ async def upload_media(
             detail="File name is required",
         )
 
-    directory_path = f"doctor_{doctor.id}"
+    directory_path = f"doctors/doctor_{doctor.id}"
 
     try:
 
-        file_url = await storage.upload_file(
+        file_url = await cloudinary_service.upload_file(
             file,
-            directory_path,
+            folder=directory_path,
         )
 
     except Exception as e:
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to upload file: {str(e)}",
+            detail=f"Failed to upload file to Cloudinary: {str(e)}",
         )
 
     new_media = DoctorMedia(
@@ -606,12 +600,9 @@ def delete_media(
     media_id: int,
     doctor: Doctor = Depends(get_current_doctor),
     db: Session = Depends(get_db),
-    storage: StorageService = Depends(
-        get_storage_service
-    ),
 ):
     """
-    Elimina un archivo multimedia del doctor.
+    Elimina un archivo multimedia del doctor de Cloudinary y de la base de datos.
     """
 
     media = (
@@ -630,18 +621,18 @@ def delete_media(
         )
 
     # ------------------------------------------------------
-    # ELIMINAR DEL STORAGE
+    # ELIMINAR DE CLOUDINARY
     # ------------------------------------------------------
 
     try:
 
-        storage.delete_file(
+        cloudinary_service.delete_file(
             media.file_url
         )
 
     except Exception:
         # No impedimos eliminar el registro de BD
-        # si el archivo ya no existe físicamente.
+        # si el archivo ya no existe en Cloudinary.
         pass
 
     # ------------------------------------------------------

@@ -14,7 +14,7 @@ from app.schemas.medical_conversation import (
 from app.services.medical_conversation_service import (
     MedicalConversationService
 )
-from app.services.audio_storage_service import AudioStorageService
+from app.services.cloudinary_service import cloudinary_service
 from app.routers.websockets import manager as ws_manager
 from datetime import datetime
 
@@ -194,23 +194,28 @@ async def send_audio_message(
             detail="Conversación no encontrada o usuario no autorizado"
         )
 
-    # 2. Guardar el archivo de audio física/lógicamente
-    audio_service = AudioStorageService()
+    # 2. Guardar el archivo de audio en Cloudinary en carpeta por conversation_id
+    folder_path = f"medical_conversations/{conversation_id}"
     try:
-        attachment_data = await audio_service.save_audio(audio, message.id)
-    except ValueError as e:
-        db.delete(message)
-        db.commit()
-        raise HTTPException(
-            status_code=400,
-            detail=str(e)
+        cloudinary_details = await cloudinary_service.upload_file_with_details(
+            file=audio,
+            folder=folder_path
         )
+        attachment_data = {
+            "file_name": audio.filename or "audio.webm",
+            "file_path": cloudinary_details.get("public_id", ""),
+            "file_url": cloudinary_details.get("secure_url", ""),
+            "mime_type": audio.content_type or "audio/webm",
+            "file_size": cloudinary_details.get("file_size", 0),
+            "storage_disk": "cloudinary",
+            "attachment_type": "audio",
+        }
     except Exception as e:
         db.delete(message)
         db.commit()
         raise HTTPException(
             status_code=500,
-            detail=f"Error al guardar el archivo de audio: {str(e)}"
+            detail=f"Error al guardar el archivo de audio en Cloudinary: {str(e)}"
         )
 
     # 3. Crear el registro del attachment en la base de datos
@@ -222,7 +227,7 @@ async def send_audio_message(
             duration=duration
         )
     except Exception as e:
-        await audio_service.delete_audio(attachment_data["file_path"])
+        cloudinary_service.delete_file(attachment_data["file_path"])
         db.delete(message)
         db.commit()
         raise HTTPException(
