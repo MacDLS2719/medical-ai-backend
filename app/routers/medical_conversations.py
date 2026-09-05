@@ -141,22 +141,27 @@ def send_message(
 )
 async def create_video_call(
     conversation_id: int,
-    sender_id: int,
+    sender_id: int = Query(None),
+    sender_id_form: int = Form(None, alias="sender_id"),
     db: Session = Depends(get_db)
 ):
+    actual_sender_id = sender_id if sender_id is not None else sender_id_form
+    if actual_sender_id is None:
+        raise HTTPException(status_code=400, detail="El parámetro sender_id es requerido.")
+
     try:
-        conversation = MedicalConversationService.get_conversation(db, conversation_id, sender_id)
+        conversation = MedicalConversationService.get_conversation(db, conversation_id, actual_sender_id)
         if not conversation:
             raise HTTPException(status_code=404, detail="Conversación no encontrada")
             
-        receiver_id = conversation.doctor_id if conversation.patient_id == sender_id else conversation.patient_id
+        receiver_id = conversation.doctor_id if conversation.patient_id == actual_sender_id else conversation.patient_id
         
         timestamp = int(datetime.now().timestamp())
         room_name = f"MedicalChat-{conversation_id}-{timestamp}"
             
         await ws_manager.send_personal_message({
             "action": "INCOMING_CALL",
-            "from_user": sender_id,
+            "from_user": actual_sender_id,
             "conversation_id": conversation_id,
             "room_name": room_name
         }, receiver_id)
@@ -165,7 +170,9 @@ async def create_video_call(
     except ValueError as e:
         raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
+        logger.error(f"Error al crear videollamada: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error al crear videollamada: {str(e)}")
+
 
 
 # ==========================================================
