@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
 from sqlalchemy.orm import Session
+import logging
 
 from app.core.database import get_db
 
@@ -18,8 +19,10 @@ from app.services.cloudinary_service import cloudinary_service
 from app.routers.websockets import manager as ws_manager
 from datetime import datetime
 
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
 
 
 # ==========================================================
@@ -175,16 +178,24 @@ async def create_video_call(
 )
 async def send_audio_message(
     conversation_id: int,
-    sender_id: int,
+    sender_id: int = Query(None),
+    sender_id_form: int = Form(None, alias="sender_id"),
     audio: UploadFile = File(...),
     duration: float = Form(None),
     db: Session = Depends(get_db)
 ):
+    actual_sender_id = sender_id if sender_id is not None else sender_id_form
+    if actual_sender_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail="El parámetro sender_id es requerido."
+        )
+
     # 1. Crear el mensaje en la base de datos con un texto genérico
     message = MedicalConversationService.send_message(
         db=db,
         conversation_id=conversation_id,
-        sender_id=sender_id,
+        sender_id=actual_sender_id,
         message="[Mensaje de Voz]"
     )
 
@@ -197,20 +208,23 @@ async def send_audio_message(
     # 2. Guardar el archivo de audio en Cloudinary en carpeta por conversation_id
     folder_path = f"medical_conversations/{conversation_id}"
     try:
+        await audio.seek(0)
         cloudinary_details = await cloudinary_service.upload_file_with_details(
             file=audio,
-            folder=folder_path
+            folder=folder_path,
+            resource_type="video"
         )
         attachment_data = {
             "file_name": audio.filename or "audio.webm",
             "file_path": cloudinary_details.get("public_id", ""),
             "file_url": cloudinary_details.get("secure_url", ""),
-            "mime_type": audio.content_type or "audio/webm",
+            "mime_type": audio.content_type or cloudinary_details.get("mime_type", "audio/webm"),
             "file_size": cloudinary_details.get("file_size", 0),
             "storage_disk": "cloudinary",
             "attachment_type": "audio",
         }
     except Exception as e:
+        logger.error(f"Error al guardar audio en Cloudinary: {str(e)}", exc_info=True)
         db.delete(message)
         db.commit()
         raise HTTPException(
@@ -226,8 +240,10 @@ async def send_audio_message(
             attachment_data=attachment_data,
             duration=duration
         )
+        db.refresh(message)
     except Exception as e:
-        cloudinary_service.delete_file(attachment_data["file_path"])
+        logger.error(f"Error al registrar adjunto de audio: {str(e)}", exc_info=True)
+        cloudinary_service.delete_file(attachment_data["file_path"], resource_type="video")
         db.delete(message)
         db.commit()
         raise HTTPException(
@@ -236,6 +252,7 @@ async def send_audio_message(
         )
 
     return message
+
 
 
 # ==========================================================
