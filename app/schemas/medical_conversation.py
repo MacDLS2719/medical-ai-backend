@@ -19,13 +19,24 @@ class ConversationResponse(BaseModel):
         if hasattr(obj, 'doctor') and obj.doctor is not None:
             user = obj.doctor  # relación -> User
             doctor_profile = getattr(user, 'doctor', None)
+            patient_profile = getattr(user, 'patient', None)
             if doctor_profile:
-                obj.__dict__['doctor_name'] = f"{doctor_profile.first_name} {doctor_profile.last_name}"
+                obj.__dict__['doctor_name'] = f"Dr. {doctor_profile.first_name} {doctor_profile.last_name}"
+            elif patient_profile:
+                obj.__dict__['doctor_name'] = f"{patient_profile.first_name} {patient_profile.last_name}"
+            else:
+                obj.__dict__['doctor_name'] = getattr(user, 'email', 'Médico')
+
         if hasattr(obj, 'patient') and obj.patient is not None:
             user = obj.patient  # relación -> User
             patient_profile = getattr(user, 'patient', None)
+            doctor_profile = getattr(user, 'doctor', None)
             if patient_profile:
                 obj.__dict__['patient_name'] = f"{patient_profile.first_name} {patient_profile.last_name}"
+            elif doctor_profile:
+                obj.__dict__['patient_name'] = f"Dr. {doctor_profile.first_name} {doctor_profile.last_name}"
+            else:
+                obj.__dict__['patient_name'] = getattr(user, 'email', 'Paciente')
         return obj
 
     class Config:

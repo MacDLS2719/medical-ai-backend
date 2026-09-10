@@ -1,3 +1,4 @@
+from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
 from sqlalchemy.orm import Session
 import logging
@@ -70,6 +71,138 @@ def get_user_conversations(
 
 
 # ==========================================================
+# OBTENER CONTACTOS DISPONIBLES PARA CHAT (SEGÚN ROL)
+# ==========================================================
+
+@router.get(
+    "/conversations/contacts"
+)
+def get_available_contacts(
+    current_user_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db)
+):
+    from app.models.user import User
+    from app.models.doctor import Doctor
+    from app.models.patient import Patient
+    from sqlalchemy import or_
+
+    result = []
+    seen_user_ids = set()
+
+    if current_user_id:
+        seen_user_ids.add(current_user_id)
+
+    # 1. Obtener todos los médicos registrados
+    doctors = db.query(Doctor).join(
+        User, Doctor.user_id == User.id
+    ).filter(
+        or_(User.is_active == True, User.is_active.is_(None)),
+        or_(Doctor.is_active == True, Doctor.is_active.is_(None))
+    ).order_by(Doctor.first_name).all()
+
+    for d in doctors:
+        if d.user_id not in seen_user_ids:
+            seen_user_ids.add(d.user_id)
+            result.append({
+                "id": d.id,
+                "user_id": d.user_id,
+                "first_name": d.first_name,
+                "last_name": d.last_name,
+                "full_name": f"Dr. {d.first_name} {d.last_name}",
+                "role": "doctor",
+                "specialty": d.specialty or "Medicina General",
+                "country": d.country,
+                "city": d.city,
+                "address": d.address,
+                "professional_description": d.professional_description,
+                "verification_status": d.verification_status,
+            })
+
+    # También buscar usuarios con role='doctor' que no estén en la tabla Doctor aún
+    doctor_users = db.query(User).filter(
+        User.role.ilike("doctor"),
+        or_(User.is_active == True, User.is_active.is_(None))
+    ).all()
+
+    for u in doctor_users:
+        if u.id not in seen_user_ids:
+            seen_user_ids.add(u.id)
+            name_part = u.email.split("@")[0].capitalize()
+            result.append({
+                "id": u.id,
+                "user_id": u.id,
+                "first_name": name_part,
+                "last_name": "",
+                "full_name": f"Dr. {name_part}",
+                "role": "doctor",
+                "specialty": "Médico Registrado",
+                "country": None,
+                "city": None,
+                "address": None,
+                "professional_description": None,
+                "verification_status": "active",
+            })
+
+    # 2. Obtener todos los pacientes registrados
+    patients = db.query(Patient).join(
+        User, Patient.user_id == User.id
+    ).filter(
+        or_(User.is_active == True, User.is_active.is_(None))
+    ).order_by(Patient.first_name).all()
+
+    for p in patients:
+        if p.user_id not in seen_user_ids:
+            seen_user_ids.add(p.user_id)
+            result.append({
+                "id": p.id,
+                "user_id": p.user_id,
+                "first_name": p.first_name,
+                "last_name": p.last_name,
+                "full_name": f"{p.first_name} {p.last_name}",
+                "role": "patient",
+                "document_number": p.document_number,
+                "gender": p.gender,
+                "address": p.address,
+                "specialty": "Paciente",
+            })
+
+    # También buscar usuarios con role='patient'
+    patient_users = db.query(User).filter(
+        User.role.ilike("patient"),
+        or_(User.is_active == True, User.is_active.is_(None))
+    ).all()
+
+    for u in patient_users:
+        if u.id not in seen_user_ids:
+            seen_user_ids.add(u.id)
+            name_part = u.email.split("@")[0].capitalize()
+            result.append({
+                "id": u.id,
+                "user_id": u.id,
+                "first_name": name_part,
+                "last_name": "",
+                "full_name": u.email,
+                "role": "patient",
+                "document_number": None,
+                "gender": None,
+                "address": None,
+                "specialty": "Paciente",
+            })
+
+    return result
+
+
+@router.get(
+    "/conversations/doctors"
+)
+def get_available_doctors_for_chat(
+    current_user_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db)
+):
+    return get_available_contacts(current_user_id=current_user_id, db=db)
+
+
+# ==========================================================
 # OBTENER UNA CONVERSACIÓN
 # ==========================================================
 
@@ -124,17 +257,8 @@ def send_message(
         )
     )
 
-    if not message:
-        raise HTTPException(
-            status_code=404,
-            detail="Conversación no encontrada o usuario no autorizado"
-        )
-
-    return message
-
-
 # ==========================================================
-# VIDEOLLAMADA (JITSI MEET)
+# VIDEOLLAMADA (DAILY.CO)
 # ==========================================================
 
 @router.post(
@@ -157,6 +281,18 @@ async def create_video_call(
 
         receiver_id = conversation.doctor_id if conversation.patient_id == actual_sender_id else conversation.patient_id
 
+        # Obtener nombre del emisor
+        from app.models.user import User
+        caller_user = db.query(User).filter(User.id == actual_sender_id).first()
+        caller_name = "Usuario"
+        if caller_user:
+            if caller_user.doctor:
+                caller_name = f"Dr. {caller_user.doctor.first_name} {caller_user.doctor.last_name}"
+            elif caller_user.patient:
+                caller_name = f"{caller_user.patient.first_name} {caller_user.patient.last_name}"
+            else:
+                caller_name = caller_user.email
+
         # Crear sala real en Daily.co
         timestamp = int(datetime.now().timestamp())
         room_name = f"medicalchat-{conversation_id}-{timestamp}"
@@ -168,6 +304,7 @@ async def create_video_call(
         await ws_manager.send_personal_message({
             "action": "INCOMING_CALL",
             "from_user": actual_sender_id,
+            "caller_name": caller_name,
             "conversation_id": conversation_id,
             "room_name": room_name_final,
             "room_url": room_url

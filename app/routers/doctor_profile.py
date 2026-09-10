@@ -112,6 +112,7 @@ def register_doctor(
         consultation_phone=data.consultation_phone,
         data_policy_accepted=True,
         data_policy_accepted_at=datetime.utcnow(),
+        is_active=True,
     )
     db.add(new_doctor)
     db.commit()
