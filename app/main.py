@@ -17,11 +17,29 @@ from app.routers import (
     doctor_verification,
 )
 
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+import re
+
 app = FastAPI(
     title="Medical AI API",
     description="API para plataforma de inteligencia artificial médica",
     version="1.0.0",
 )
+
+# Middleware para normalizar barras dobles y prefijo /api
+class PathNormalizationMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        path = re.sub(r'/+', '/', request.scope.get("path", ""))
+        
+        # Si la ruta no empieza por /api y no es archivos / health / root, anteponer /api
+        if not path.startswith("/api") and not path.startswith("/archivos") and path not in ["/", "/health", ""]:
+            path = "/api" + path
+            
+        request.scope["path"] = path
+        return await call_next(request)
+
+app.add_middleware(PathNormalizationMiddleware)
 
 # Set up CORS for frontend connectivity
 app.add_middleware(
