@@ -39,16 +39,22 @@ class PathNormalizationMiddleware(BaseHTTPMiddleware):
         request.scope["path"] = path
         return await call_next(request)
 
-app.add_middleware(PathNormalizationMiddleware)
-
-# Set up CORS for frontend connectivity
+# CORS debe registrarse PRIMERO para que envuelva todo el stack
+# (en FastAPI/Starlette los middlewares se aplican en orden inverso al registro)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.add_middleware(PathNormalizationMiddleware)
 
 app.include_router(metadata.router)
 app.include_router(medical_search.router)

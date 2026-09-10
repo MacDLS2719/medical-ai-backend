@@ -64,5 +64,5 @@ class MedicalVerification(Base):
 
     verifier: Mapped["User | None"] = relationship(
         "User",
-        back_populates="medical_verifications"
+        foreign_keys=[verifier_id]
     )

@@ -10,10 +10,13 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+from app.core.encryption import EncryptedString, EncryptedText
+from app.models.medical_verification import MedicalVerification
 
 
 class Doctor(Base):
@@ -51,12 +54,12 @@ class Doctor(Base):
     # ==========================================================
 
     first_name: Mapped[str] = mapped_column(
-        String(100),
+        EncryptedString(100),
         nullable=False
     )
 
     last_name: Mapped[str] = mapped_column(
-        String(100),
+        EncryptedString(100),
         nullable=False
     )
 
@@ -71,7 +74,7 @@ class Doctor(Base):
     )
 
     phone: Mapped[str | None] = mapped_column(
-        String(30),
+        EncryptedString(30),
         nullable=True
     )
 
@@ -97,7 +100,7 @@ class Doctor(Base):
     # ==========================================================
 
     medical_license: Mapped[str] = mapped_column(
-        String(100),
+        EncryptedString(100),
         unique=True,
         nullable=False,
         index=True
@@ -105,7 +108,7 @@ class Doctor(Base):
 
     # Documento de identidad
     identity_document_url: Mapped[str | None] = mapped_column(
-        String(500),
+        EncryptedString(500),
         nullable=True
     )
 
@@ -114,12 +117,12 @@ class Doctor(Base):
     # ==========================================================
 
     professional_registration_number: Mapped[str | None] = mapped_column(
-        String(100),
+        EncryptedString(100),
         nullable=True
     )
 
     professional_college: Mapped[str | None] = mapped_column(
-        String(255),
+        EncryptedString(255),
         nullable=True
     )
 
@@ -128,9 +131,9 @@ class Doctor(Base):
         nullable=True
     )
 
-    # Certificación de colegiación
+    # Certificacion de colegiacion
     professional_registration_certificate_url: Mapped[str | None] = mapped_column(
-        String(500),
+        EncryptedString(500),
         nullable=True
     )
 
@@ -171,9 +174,9 @@ class Doctor(Base):
         nullable=True
     )
 
-    # Descripción profesional
+    # Descripcion profesional
     professional_description: Mapped[str | None] = mapped_column(
-        Text,
+        EncryptedText(),
         nullable=True
     )
 
@@ -182,7 +185,7 @@ class Doctor(Base):
     # ==========================================================
 
     address: Mapped[str | None] = mapped_column(
-        String(255),
+        EncryptedString(255),
         nullable=True
     )
 
@@ -216,7 +219,7 @@ class Doctor(Base):
     # ==========================================================
 
     consultation_phone: Mapped[str | None] = mapped_column(
-        String(30),
+        EncryptedString(30),
         nullable=True
     )
 
@@ -304,4 +307,15 @@ class Doctor(Base):
         "DoctorMedia",
         back_populates="doctor",
         cascade="all, delete-orphan"
+    )
+
+    # ==========================================================
+    # VERIFICACIONES MÉDICAS
+    # ==========================================================
+
+    medical_verifications: Mapped[list["MedicalVerification"]] = relationship(
+        "MedicalVerification",
+        back_populates="doctor",
+        cascade="all, delete-orphan",
+        order_by=lambda: MedicalVerification.created_at.desc()
     )

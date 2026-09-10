@@ -11,6 +11,12 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "your-secret-key-for-dev-change-in-prod"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
 
+    # ------------------------------------------------------------------
+    # Clave de cifrado PHI — HIPAA / GDPR (AES-256-GCM)
+    # Genera UNA vez: python -c "import os,base64; print(base64.b64encode(os.urandom(32)).decode())"
+    # ------------------------------------------------------------------
+    PHI_ENCRYPTION_KEY: str = ""
+
     # Cloudinary Configuration
     CLOUDINARY_CLOUD_NAME: str = ""
     CLOUDINARY_API_KEY: str = ""

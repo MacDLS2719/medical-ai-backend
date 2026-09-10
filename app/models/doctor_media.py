@@ -4,6 +4,7 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+from app.core.encryption import EncryptedString
 
 
 class DoctorMedia(Base):
@@ -29,12 +30,12 @@ class DoctorMedia(Base):
     )
 
     file_url: Mapped[str] = mapped_column(
-        String(500),
+        EncryptedString(500),
         nullable=False
     )
 
     file_name: Mapped[str | None] = mapped_column(
-        String(255),
+        EncryptedString(255),
         nullable=True
     )
 

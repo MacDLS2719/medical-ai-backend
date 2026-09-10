@@ -4,6 +4,7 @@ from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+from app.core.encryption import EncryptedString, EncryptedText
 
 
 class DoctorEducation(Base):
@@ -24,17 +25,17 @@ class DoctorEducation(Base):
     )
 
     institution: Mapped[str] = mapped_column(
-        String(255),
+        EncryptedString(255),
         nullable=False
     )
 
     degree: Mapped[str] = mapped_column(
-        String(150),
+        EncryptedString(150),
         nullable=False
     )
 
     field_of_study: Mapped[str | None] = mapped_column(
-        String(150),
+        EncryptedString(150),
         nullable=True
     )
 
@@ -49,7 +50,7 @@ class DoctorEducation(Base):
     )
 
     description: Mapped[str | None] = mapped_column(
-        Text,
+        EncryptedText(),
         nullable=True
     )
 
