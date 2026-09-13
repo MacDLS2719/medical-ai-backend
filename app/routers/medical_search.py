@@ -28,7 +28,7 @@ router = APIRouter(
 #
 # El frontend envía strings simples como 'europepmc', 'whoictrp'
 # o 'clinicaltrials'.  El orchestrador usa sus propias claves
-# internas: 'europe_pmc', 'who_ictrp', 'clinical_trials'.
+# internas: 'europe_pmc', 'clinical_trials'.
 
 SOURCE_MAP: dict[str, str] = {
     "pubmed": "pubmed",
@@ -37,8 +37,6 @@ SOURCE_MAP: dict[str, str] = {
     "europe_pmc": "europe_pmc",
     "openfda": "openfda",
     "open_fda": "openfda",
-    "whoictrp": "who_ictrp",
-    "who_ictrp": "who_ictrp",
     "clinicaltrials": "clinical_trials",
     "clinical_trials": "clinical_trials",
 }
@@ -98,7 +96,6 @@ async def _stream_search(
 
     - PubMed / Cochrane / EuropePMC / ClinicalTrials: reciben la query booleana completa.
     - OpenFDA: recibe solo el primer término médico (acepta nombres de medicamentos).
-    - WHO ICTRP: deshabilitado temporalmente (API v2 devuelve 404).
 
     Formato de cada línea NDJSON:
         {"type": "results", "source": "pubmed",  "data": [...]}
@@ -122,8 +119,6 @@ async def _stream_search(
         "europe_pmc":      (EuropePMCService(),       query),
         # OpenFDA solo acepta términos simples, no booleanos
         "openfda":         (OpenFDAService(),         primary_term),
-        # WHO ICTRP API v2 devuelve 404 — deshabilitado hasta que lo corrijan
-        # "who_ictrp":    (WHOICTRPService(),         query),
     }
 
     # Si se pide una fuente concreta usar solo esa, sino todas

@@ -11,7 +11,6 @@ from app.services.rag.librerias.cochrane_service import CochraneService
 from app.services.rag.librerias.clinical_trials_service import ClinicalTrialsService
 from app.services.rag.librerias.europe_pmc_service import EuropePMCService
 from app.services.rag.librerias.openfda_service import OpenFDAService
-from app.services.rag.librerias.who_ictrp_service import WHOICTRPService
 
 
 class MedicalSearchOrchestrator:
@@ -42,7 +41,6 @@ class MedicalSearchOrchestrator:
             "clinical_trials": ClinicalTrialsService(),
             "europe_pmc": EuropePMCService(),
             "openfda": OpenFDAService(),
-            "who_ictrp": WHOICTRPService(),
         }
 
     async def search(

@@ -256,6 +256,8 @@ def send_message(
             message=data.message
         )
     )
+    
+    return message
 
 # ==========================================================
 # VIDEOLLAMADA (DAILY.CO)

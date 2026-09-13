@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     GOOGLE_TRANSLATE_API_KEY: str = ""
     USE_LOCAL_TRANSLATION: bool = False
 
+    # Deepgram — transcripción de audio a texto
+    DEEPGRAM: str = ""
+
     @computed_field
     @property
     def sync_database_url(self) -> str:

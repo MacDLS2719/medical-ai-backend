@@ -30,6 +30,12 @@ from app.models.doctor_media import DoctorMedia
 
 from app.models.medical_message_attachment import MedicalMessageAttachment
 
+from app.models.paddle_customer import PaddleCustomer
+from app.models.subscription_plan import SubscriptionPlan
+from app.models.subscription import Subscription
+from app.models.payment import Payment
+from app.models.paddle_webhook_event import PaddleWebhookEvent
+
 __all__ = [
     "User",
     "Doctor",
@@ -60,4 +66,10 @@ __all__ = [
 
     "DoctorEducation",
     "DoctorMedia",
+
+    "PaddleCustomer",
+    "SubscriptionPlan",
+    "Subscription",
+    "Payment",
+    "PaddleWebhookEvent",
 ]

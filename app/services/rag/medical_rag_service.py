@@ -884,7 +884,6 @@ Por lo tanto, NO inventes referencias adicionales.
             "cochrane": 0,
             "europe_pmc": 0,
             "openfda": 0,
-            "who_ictrp": 0,
             "total": 0,
         }
 
@@ -931,14 +930,6 @@ Por lo tanto, NO inventes referencias adicionales.
 
                 summary["openfda"] += 1
 
-            elif source_type in [
-                "who_ictrp",
-                "who-ictrp",
-                "who ictrp",
-            ]:
-
-                summary["who_ictrp"] += 1
-
         summary["total"] = sum(
             value
             for key, value in summary.items()
@@ -982,14 +973,6 @@ Por lo tanto, NO inventes referencias adicionales.
         ]:
 
             return "Estudio / ensayo clínico"
-
-        if source in [
-            "who_ictrp",
-            "who-ictrp",
-            "who ictrp",
-        ]:
-
-            return "Registro de estudio clínico"
 
         if source == "cochrane":
 

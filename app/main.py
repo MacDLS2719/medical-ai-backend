@@ -15,6 +15,7 @@ from app.routers import (
     medical_alerts,
     websockets,
     doctor_verification,
+    transcribe,
 )
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -60,6 +61,7 @@ app.include_router(metadata.router)
 app.include_router(medical_search.router)
 app.include_router(ai_chat.router)
 app.include_router(medical_alerts.router)
+app.include_router(transcribe.router)
 
 # Mount the static files directory
 current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
