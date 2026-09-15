@@ -24,6 +24,8 @@ from app.models.medical_conversation import MedicalConversation
 from app.models.medical_message import MedicalMessage
 from app.models.medical_message_notification import MedicalMessageNotification
 from app.models.medical_notification import MedicalNotification
+from app.models.medical_video_call import MedicalVideoCall
+from app.models.medical_verification import MedicalVerification
 
 from app.models.doctor_education import DoctorEducation
 from app.models.doctor_media import DoctorMedia

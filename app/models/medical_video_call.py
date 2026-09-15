@@ -1,19 +1,21 @@
+
+from datetime import datetime
+
 from sqlalchemy import (
     Column,
     Integer,
-    ForeignKey,
-    Boolean,
+    String,
     DateTime,
+    ForeignKey,
     func,
 )
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
-from app.core.encryption import EncryptedText
 
 
-class MedicalMessage(Base):
-    __tablename__ = "medical_messages"
+class MedicalVideoCall(Base):
+    __tablename__ = "medical_video_calls"
 
     id = Column(
         Integer,
@@ -31,7 +33,7 @@ class MedicalMessage(Base):
         index=True,
     )
 
-    sender_id = Column(
+    caller_id = Column(
         Integer,
         ForeignKey(
             "users.id",
@@ -52,32 +54,52 @@ class MedicalMessage(Base):
     )
 
     # ---------------------------------------------------------
-    # Mensaje cifrado
+    # Daily.co
     # ---------------------------------------------------------
 
-    message = Column(
-        EncryptedText(),
+    room_name = Column(
+        String(255),
         nullable=False,
     )
 
-    # ---------------------------------------------------------
-    # Lectura
-    # ---------------------------------------------------------
-
-    is_read = Column(
-        Boolean,
-        nullable=False,
-        default=False,
-        server_default="false",
-    )
-
-    read_at = Column(
-        DateTime,
+    room_url = Column(
+        String(1000),
         nullable=True,
     )
 
     # ---------------------------------------------------------
-    # Fechas
+    # Estado de la llamada
+    # ---------------------------------------------------------
+
+    status = Column(
+        String(30),
+        nullable=False,
+        default="calling",
+        server_default="calling",
+        index=True,
+    )
+
+    # ---------------------------------------------------------
+    # Control temporal
+    # ---------------------------------------------------------
+
+    started_at = Column(
+        DateTime,
+        nullable=True,
+    )
+
+    ended_at = Column(
+        DateTime,
+        nullable=True,
+    )
+
+    duration = Column(
+        Integer,
+        nullable=True,
+    )
+
+    # ---------------------------------------------------------
+    # Fechas del registro
     # ---------------------------------------------------------
 
     created_at = Column(
@@ -99,27 +121,15 @@ class MedicalMessage(Base):
 
     conversation = relationship(
         "MedicalConversation",
-        back_populates="messages",
+        back_populates="video_calls",
     )
 
-    sender = relationship(
+    caller = relationship(
         "User",
-        foreign_keys=[sender_id],
+        foreign_keys=[caller_id],
     )
 
     receiver = relationship(
         "User",
         foreign_keys=[receiver_id],
-    )
-
-    notifications = relationship(
-        "MedicalMessageNotification",
-        back_populates="medical_message",
-        cascade="all, delete-orphan",
-    )
-
-    attachments = relationship(
-        "MedicalMessageAttachment",
-        back_populates="message",
-        cascade="all, delete-orphan",
     )

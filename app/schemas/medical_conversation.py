@@ -9,8 +9,13 @@ class ConversationResponse(BaseModel):
     doctor_id: int
     status: str
     created_at: datetime
+    updated_at: Optional[datetime] = None
     doctor_name: Optional[str] = None
     patient_name: Optional[str] = None
+    last_message: Optional[str] = None
+    last_message_sender_id: Optional[int] = None
+    patient_unread_count: int = 0
+    doctor_unread_count: int = 0
 
     @model_validator(mode='before')
     @classmethod
@@ -37,6 +42,20 @@ class ConversationResponse(BaseModel):
                 obj.__dict__['patient_name'] = f"Dr. {doctor_profile.first_name} {doctor_profile.last_name}"
             else:
                 obj.__dict__['patient_name'] = getattr(user, 'email', 'Paciente')
+
+        if hasattr(obj, 'messages') and obj.messages:
+            sorted_msgs = sorted(obj.messages, key=lambda m: m.created_at or datetime.min)
+            if sorted_msgs:
+                last_msg = sorted_msgs[-1]
+                obj.__dict__['last_message'] = last_msg.message
+                obj.__dict__['last_message_sender_id'] = last_msg.sender_id
+                
+            patient_unread = sum(1 for m in obj.messages if m.receiver_id == obj.patient_id and not m.is_read)
+            doctor_unread = sum(1 for m in obj.messages if m.receiver_id == obj.doctor_id and not m.is_read)
+            obj.__dict__['patient_unread_count'] = patient_unread
+            obj.__dict__['doctor_unread_count'] = doctor_unread
+
+        obj.__dict__['updated_at'] = getattr(obj, 'updated_at', obj.created_at)
         return obj
 
     class Config:

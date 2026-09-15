@@ -22,7 +22,9 @@ class MedicalConversationService:
         doctor_id: int
     ):
 
-        conversation = db.query(MedicalConversation).filter(
+        conversation = db.query(
+            MedicalConversation
+        ).filter(
             and_(
                 MedicalConversation.patient_id == patient_id,
                 MedicalConversation.doctor_id == doctor_id
@@ -30,7 +32,40 @@ class MedicalConversationService:
         ).first()
 
         if conversation:
+
+            # --------------------------------------------------
+            # Reactivar para ambos participantes
+            # --------------------------------------------------
+            #
+            # Si alguno había desactivado anteriormente
+            # la conversación y vuelve a abrir el chat,
+            # la conversación vuelve a estar disponible.
+            #
+            # No se eliminan mensajes ni historial.
+            # --------------------------------------------------
+
+            changed = False
+
+            if conversation.patient_deleted_at is not None:
+                conversation.patient_deleted_at = None
+                changed = True
+
+            if conversation.doctor_deleted_at is not None:
+                conversation.doctor_deleted_at = None
+                changed = True
+
+            if changed:
+                conversation.status = "active"
+                conversation.updated_at = datetime.utcnow()
+
+                db.commit()
+                db.refresh(conversation)
+
             return conversation
+
+        # ------------------------------------------------------
+        # Crear nueva conversación
+        # ------------------------------------------------------
 
         conversation = MedicalConversation(
             patient_id=patient_id,
@@ -54,12 +89,44 @@ class MedicalConversationService:
         user_id: int
     ):
 
+        # ------------------------------------------------------
+        # Paciente
+        # ------------------------------------------------------
+
+        patient_conversations = db.query(
+            MedicalConversation
+        ).filter(
+            MedicalConversation.patient_id == user_id,
+            MedicalConversation.patient_deleted_at.is_(None)
+        )
+
+        # ------------------------------------------------------
+        # Médico
+        # ------------------------------------------------------
+
+        doctor_conversations = db.query(
+            MedicalConversation
+        ).filter(
+            MedicalConversation.doctor_id == user_id,
+            MedicalConversation.doctor_deleted_at.is_(None)
+        )
+
+        # ------------------------------------------------------
+        # Unificar ambos casos
+        # ------------------------------------------------------
+
         return db.query(
             MedicalConversation
         ).filter(
             or_(
-                MedicalConversation.patient_id == user_id,
-                MedicalConversation.doctor_id == user_id
+                and_(
+                    MedicalConversation.patient_id == user_id,
+                    MedicalConversation.patient_deleted_at.is_(None)
+                ),
+                and_(
+                    MedicalConversation.doctor_id == user_id,
+                    MedicalConversation.doctor_deleted_at.is_(None)
+                )
             )
         ).order_by(
             MedicalConversation.updated_at.desc()
@@ -76,15 +143,23 @@ class MedicalConversationService:
         user_id: int
     ):
 
-        return db.query(
+        conversation = db.query(
             MedicalConversation
         ).filter(
             MedicalConversation.id == conversation_id,
             or_(
-                MedicalConversation.patient_id == user_id,
-                MedicalConversation.doctor_id == user_id
+                and_(
+                    MedicalConversation.patient_id == user_id,
+                    MedicalConversation.patient_deleted_at.is_(None)
+                ),
+                and_(
+                    MedicalConversation.doctor_id == user_id,
+                    MedicalConversation.doctor_deleted_at.is_(None)
+                )
             )
         ).first()
+
+        return conversation
 
     # ==========================================================
     # ENVIAR MENSAJE
@@ -98,26 +173,47 @@ class MedicalConversationService:
         message: str
     ):
 
+        # ------------------------------------------------------
+        # Buscar conversación y verificar que el usuario
+        # todavía tenga el chat activo.
+        # ------------------------------------------------------
+
         conversation = db.query(
             MedicalConversation
         ).filter(
             MedicalConversation.id == conversation_id,
             or_(
-                MedicalConversation.patient_id == sender_id,
-                MedicalConversation.doctor_id == sender_id
+                and_(
+                    MedicalConversation.patient_id == sender_id,
+                    MedicalConversation.patient_deleted_at.is_(None)
+                ),
+                and_(
+                    MedicalConversation.doctor_id == sender_id,
+                    MedicalConversation.doctor_deleted_at.is_(None)
+                )
             )
         ).first()
 
         if not conversation:
             return None
 
+        # ------------------------------------------------------
         # Determinar receptor
+        # ------------------------------------------------------
+
         if conversation.patient_id == sender_id:
             receiver_id = conversation.doctor_id
         else:
             receiver_id = conversation.patient_id
 
+        # ------------------------------------------------------
         # Crear mensaje
+        #
+        # MedicalMessage.message utiliza EncryptedText(),
+        # por lo que se cifra automáticamente antes de
+        # almacenarse en la base de datos.
+        # ------------------------------------------------------
+
         medical_message = MedicalMessage(
             conversation_id=conversation_id,
             sender_id=sender_id,
@@ -131,7 +227,10 @@ class MedicalConversationService:
         # Necesitamos el ID del mensaje
         db.flush()
 
+        # ------------------------------------------------------
         # Crear notificación
+        # ------------------------------------------------------
+
         notification = MedicalMessageNotification(
             message_id=medical_message.id,
             user_id=receiver_id,
@@ -142,7 +241,10 @@ class MedicalConversationService:
 
         db.add(notification)
 
+        # ------------------------------------------------------
         # Actualizar conversación
+        # ------------------------------------------------------
+
         conversation.updated_at = datetime.utcnow()
 
         db.commit()
@@ -172,13 +274,23 @@ class MedicalConversationService:
         if not conversation:
             return None
 
-        return db.query(
+        messages = db.query(
             MedicalMessage
         ).filter(
             MedicalMessage.conversation_id == conversation_id
         ).order_by(
             MedicalMessage.created_at.asc()
         ).all()
+
+        # Marcar como leídos los mensajes no leídos dirigidos al usuario actual
+        unread_msgs = [m for m in messages if m.receiver_id == user_id and not m.is_read]
+        if unread_msgs:
+            for m in unread_msgs:
+                m.is_read = True
+                m.read_at = datetime.utcnow()
+            db.commit()
+
+        return messages
 
     # ==========================================================
     # MARCAR MENSAJE COMO LEÍDO
@@ -209,7 +321,7 @@ class MedicalConversationService:
         ).filter(
             MedicalMessageNotification.message_id == message_id,
             MedicalMessageNotification.user_id == user_id,
-            MedicalMessageNotification.is_read == False
+            MedicalMessageNotification.is_read.is_(False)
         ).first()
 
         if notification:
@@ -267,7 +379,7 @@ class MedicalConversationService:
         return notification
 
     # ==========================================================
-    # ELIMINAR CONVERSACIÓN
+    # DESACTIVAR CONVERSACIÓN PARA UN USUARIO
     # ==========================================================
 
     @staticmethod
@@ -290,7 +402,33 @@ class MedicalConversationService:
         if not conversation:
             return None
 
-        db.delete(conversation)
+        # ------------------------------------------------------
+        # Paciente
+        # ------------------------------------------------------
+
+        if conversation.patient_id == user_id:
+
+            conversation.patient_deleted_at = datetime.utcnow()
+
+        # ------------------------------------------------------
+        # Médico
+        # ------------------------------------------------------
+
+        elif conversation.doctor_id == user_id:
+
+            conversation.doctor_deleted_at = datetime.utcnow()
+
+        # ------------------------------------------------------
+        # Importante:
+        #
+        # NO hacemos:
+        #
+        # db.delete(conversation)
+        #
+        # La conversación, mensajes, archivos y notificaciones
+        # permanecen almacenados.
+        # ------------------------------------------------------
+
         db.commit()
 
         return True
@@ -306,6 +444,7 @@ class MedicalConversationService:
         attachment_data: dict,
         duration: float = None
     ):
+
         attachment = MedicalMessageAttachment(
             message_id=message_id,
             file_name=attachment_data["file_name"],
@@ -317,7 +456,9 @@ class MedicalConversationService:
             attachment_type=attachment_data["attachment_type"],
             duration=duration
         )
+
         db.add(attachment)
         db.commit()
         db.refresh(attachment)
+
         return attachment
