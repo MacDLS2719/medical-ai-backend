@@ -395,8 +395,78 @@ class DoctorProfileResponse(BaseModel):
 
 
 # ==========================================================
+# SUBSCRIPTION PLAN
+# ==========================================================
+
+
+class SubscriptionPlanResponse(BaseModel):
+    id: int
+    name: str
+    slug: str
+    description: Optional[str] = None
+    price: float
+    currency: str
+    billing_interval: str
+    is_free: bool
+    is_active: bool
+    created_at: datetime
+
+    model_config = ConfigDict(
+        from_attributes=True
+    )
+
+
+# ==========================================================
 # DOCTOR CREATE / REGISTER
 # ==========================================================
+
+
+class DoctorFreeCreateRequest(BaseModel):
+    first_name: str = Field(
+        ...,
+        min_length=1,
+        max_length=100
+    )
+
+    last_name: str = Field(
+        ...,
+        min_length=1,
+        max_length=100
+    )
+
+    professional_registration_number: str = Field(
+        ...,
+        min_length=1,
+        max_length=100
+    )
+
+    specialty: str = Field(
+        ...,
+        min_length=1,
+        max_length=150
+    )
+
+    residence_country: str = Field(
+        ...,
+        min_length=1,
+        max_length=100
+    )
+
+    phone: str = Field(
+        ...,
+        min_length=1,
+        max_length=30
+    )
+
+    email: str = Field(
+        ...,
+        min_length=3,
+        max_length=255
+    )
+
+    password: Optional[str] = None
+    language: Optional[str] = "es"
+
 
 
 class DoctorCreateRequest(BaseModel):
@@ -512,3 +582,9 @@ class DoctorCreateRequest(BaseModel):
     language: Optional[str] = "es"
 
     password: Optional[str] = None
+
+    # Plan de suscripción seleccionado por el médico en el registro
+    subscription_plan_id: Optional[int] = Field(
+        default=None,
+        description="ID del plan de suscripción elegido. Si es None se asigna el plan gratuito."
+    )

@@ -319,3 +319,14 @@ class Doctor(Base):
         cascade="all, delete-orphan",
         order_by=lambda: MedicalVerification.created_at.desc()
     )
+
+    # ==========================================================
+    # SUSCRIPCIONES
+    # ==========================================================
+
+    subscriptions: Mapped[list["DoctorSubscription"]] = relationship(
+        "DoctorSubscription",
+        back_populates="doctor",
+        cascade="all, delete-orphan",
+    )
+

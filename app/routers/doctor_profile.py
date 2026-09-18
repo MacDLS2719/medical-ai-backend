@@ -29,7 +29,12 @@ from app.schemas.doctor_profile import (
     DoctorEducationResponse,
     DoctorMediaResponse,
     DoctorCreateRequest,
+    DoctorFreeCreateRequest,
+    SubscriptionPlanResponse,
 )
+
+from app.models.subscription_plan import SubscriptionPlan
+from app.models.doctor_subscription import DoctorSubscription
 
 from app.services.cloudinary_service import cloudinary_service
 
@@ -41,8 +46,24 @@ router = APIRouter(
 
 
 # ==========================================================
-# REGISTER NEW DOCTOR
+# SUBSCRIPTION PLANS - LIST ACTIVE PLANS
 # ==========================================================
+
+
+@router.get("/subscription-plans", response_model=list[SubscriptionPlanResponse])
+def list_subscription_plans(db: Session = Depends(get_db)):
+    """
+    Retorna todos los planes de suscripción activos para mostrarlos
+    al médico durante el proceso de registro.
+    """
+    plans = (
+        db.query(SubscriptionPlan)
+        .filter(SubscriptionPlan.is_active == True)
+        .order_by(SubscriptionPlan.price)
+        .all()
+    )
+    return plans
+
 
 
 @router.post(
@@ -140,6 +161,139 @@ def register_doctor(
     except Exception as e:
         db.rollback()
         # Si falla la especialidad, el doctor ya se creó correctamente
+
+    return get_doctor_profile(
+        current_user=new_user,
+        doctor=new_doctor,
+    )
+
+
+@router.post(
+    "/register/free",
+    response_model=DoctorProfileResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def register_free_doctor(
+    data: DoctorFreeCreateRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Registra un nuevo médico en la plataforma con el plan gratuito.
+    """
+    # 1. Validar si el correo ya existe
+    existing_user = db.query(User).filter(User.email == data.email).first()
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Ya existe un usuario registrado con este correo electrónico",
+        )
+
+    # 2. Validar si la licencia médica / colegiado ya existe
+    # Usamos professional_registration_number como medical_license internamente
+    existing_license = db.query(Doctor).filter(Doctor.medical_license == data.professional_registration_number).first()
+    if existing_license:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Ya existe un médico registrado con este número de colegiado",
+        )
+
+    # 3. Crear usuario
+    new_user = User(
+        email=data.email,
+        password_hash=data.password or "nopass",
+        role="doctor",
+        language=data.language or "es",
+        is_active=True,
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+
+    # 4. Crear doctor
+    new_doctor = Doctor(
+        user_id=new_user.id,
+        first_name=data.first_name,
+        last_name=data.last_name,
+        residence_country=data.residence_country,
+        professional_registration_number=data.professional_registration_number,
+        medical_license=data.professional_registration_number,  # mapped from colegiado
+        specialty=data.specialty,
+        phone=data.phone,
+        data_policy_accepted=True,
+        data_policy_accepted_at=datetime.utcnow(),
+        is_active=True,
+    )
+    db.add(new_doctor)
+    db.commit()
+    db.refresh(new_doctor)
+
+    # 5. Asociar o crear Especialidad
+    try:
+        specialty_record = db.query(Specialty).filter(Specialty.name.ilike(data.specialty.strip())).first()
+        if not specialty_record:
+            specialty_record = Specialty(
+                name=data.specialty.strip(),
+                description=f"Especialidad médica: {data.specialty.strip()}"
+            )
+            db.add(specialty_record)
+            db.commit()
+            db.refresh(specialty_record)
+
+        doctor_spec = DoctorSpecialty(
+            doctor_id=new_doctor.id,
+            specialty_id=specialty_record.id,
+            is_primary=True
+        )
+        db.add(doctor_spec)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+
+    # 6. Asignar suscripción al plan seleccionado (o al gratuito si no se indicó)
+    selected_plan = None
+
+    # Intentar usar el plan elegido por el médico
+    if data.subscription_plan_id:
+        selected_plan = (
+            db.query(SubscriptionPlan)
+            .filter(
+                SubscriptionPlan.id == data.subscription_plan_id,
+                SubscriptionPlan.is_active == True,
+            )
+            .first()
+        )
+
+    # Si no se encontró el plan elegido, usar el plan gratuito
+    if not selected_plan:
+        selected_plan = (
+            db.query(SubscriptionPlan)
+            .filter(SubscriptionPlan.is_free == True, SubscriptionPlan.is_active == True)
+            .first()
+        )
+
+    # Si tampoco existe plan gratuito en la BD, crear uno de fallback
+    if not selected_plan:
+        selected_plan = SubscriptionPlan(
+            name="Free Plan",
+            slug="free-plan",
+            description="Plan gratuito básico",
+            price=0.00,
+            currency="USD",
+            billing_interval="month",
+            is_free=True,
+            is_active=True,
+        )
+        db.add(selected_plan)
+        db.commit()
+        db.refresh(selected_plan)
+
+    new_subscription = DoctorSubscription(
+        doctor_id=new_doctor.id,
+        subscription_plan_id=selected_plan.id,
+        status="active",
+    )
+    db.add(new_subscription)
+    db.commit()
 
     return get_doctor_profile(
         current_user=new_user,
