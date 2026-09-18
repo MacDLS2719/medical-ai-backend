@@ -330,3 +330,14 @@ class Doctor(Base):
         cascade="all, delete-orphan",
     )
 
+    # ==========================================================
+    # RESEÑAS / OPINIONES
+    # ==========================================================
+
+    reviews: Mapped[list["DoctorReview"]] = relationship(
+        "DoctorReview",
+        back_populates="doctor",
+        cascade="all, delete-orphan",
+    )
+
+

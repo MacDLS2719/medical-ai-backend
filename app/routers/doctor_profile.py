@@ -65,6 +65,72 @@ def list_subscription_plans(db: Session = Depends(get_db)):
     return plans
 
 
+@router.post("/upgrade-subscription")
+def upgrade_subscription(
+    data: dict,
+    db: Session = Depends(get_db),
+):
+    """
+    Permite a un doctor existente cambiar (mejorar) su plan de suscripción.
+    Recibe: { user_id: int, plan_id: int }
+    """
+    user_id = data.get("user_id")
+    plan_id = data.get("plan_id")
+
+    if not user_id or not plan_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="user_id y plan_id son requeridos",
+        )
+
+    # Verificar que el plan existe y está activo
+    plan = (
+        db.query(SubscriptionPlan)
+        .filter(SubscriptionPlan.id == plan_id, SubscriptionPlan.is_active == True)
+        .first()
+    )
+    if not plan:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Plan de suscripción no encontrado o inactivo",
+        )
+
+    # Obtener el doctor asociado al user_id
+    doctor = (
+        db.query(Doctor)
+        .filter(Doctor.user_id == user_id)
+        .first()
+    )
+    if not doctor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Doctor no encontrado",
+        )
+
+    # Actualizar suscripción activa o crear una nueva
+    existing_sub = (
+        db.query(DoctorSubscription)
+        .filter(
+            DoctorSubscription.doctor_id == doctor.id,
+            DoctorSubscription.status == "active",
+        )
+        .first()
+    )
+
+    if existing_sub:
+        existing_sub.subscription_plan_id = plan.id
+        existing_sub.updated_at = datetime.utcnow()
+    else:
+        new_sub = DoctorSubscription(
+            doctor_id=doctor.id,
+            subscription_plan_id=plan.id,
+            status="active",
+        )
+        db.add(new_sub)
+
+    db.commit()
+    return {"success": True, "message": f"Plan actualizado a '{plan.name}'", "plan_id": plan.id}
+
 
 @router.post(
     "/register",
@@ -433,6 +499,8 @@ def get_doctor_profile(
 
         "data_policy_accepted": doctor.data_policy_accepted,
         "data_policy_accepted_at": doctor.data_policy_accepted_at,
+        "verification_status": getattr(doctor, "verification_status", "pending"),
+
 
         # --------------------------------------------------
         # RELACIONES

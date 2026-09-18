@@ -67,6 +67,13 @@ class MedicalDoctorAvailability(Base):
         default=True
     )
 
+    consultation_type = Column(
+        String(20),
+        nullable=False,
+        default="presencial",
+        index=True
+    )
+
     created_at = Column(
         DateTime,
         nullable=False,

@@ -106,3 +106,10 @@ class Patient(Base):
         back_populates="patient",
         cascade="all, delete-orphan"
     )
+
+    reviews: Mapped[list["DoctorReview"]] = relationship(
+        "DoctorReview",
+        back_populates="patient",
+        cascade="all, delete-orphan"
+    )
+

@@ -11,6 +11,8 @@ from app.routers import (
     profile,
     medical_conversations,
     medical_appointments,
+    doctor_availability,
+    doctor_reviews,
     doctor_profile,
     medical_alerts,
     websockets,
@@ -93,6 +95,16 @@ app.include_router(
 
 app.include_router(
     medical_appointments.router,
+    prefix="/api"
+)
+
+app.include_router(
+    doctor_availability.router,
+    prefix="/api"
+)
+
+app.include_router(
+    doctor_reviews.router,
     prefix="/api"
 )
 

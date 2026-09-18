@@ -29,8 +29,10 @@ from app.models.medical_verification import MedicalVerification
 
 from app.models.doctor_education import DoctorEducation
 from app.models.doctor_media import DoctorMedia
+from app.models.doctor_review import DoctorReview
 
 from app.models.medical_message_attachment import MedicalMessageAttachment
+
 
 from app.models.paddle_customer import PaddleCustomer
 from app.models.subscription_plan import SubscriptionPlan
@@ -68,6 +70,8 @@ __all__ = [
 
     "DoctorEducation",
     "DoctorMedia",
+    "DoctorReview",
+
 
     "PaddleCustomer",
     "SubscriptionPlan",

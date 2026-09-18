@@ -370,8 +370,15 @@ class DoctorProfileResponse(BaseModel):
     website: Optional[str] = None
 
     # ------------------------------------------------------
+    # ESTADO Y VERIFICACIÓN
+    # ------------------------------------------------------
+
+    verification_status: Optional[str] = "pending"
+
+    # ------------------------------------------------------
     # POLÍTICA DE DATOS
     # ------------------------------------------------------
+
 
     data_policy_accepted: bool
 

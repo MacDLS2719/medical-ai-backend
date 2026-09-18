@@ -55,6 +55,12 @@ class MedicalDoctorAvailabilityException(Base):
         default=True
     )
 
+    consultation_type = Column(
+        String(20),
+        nullable=True,
+        index=True
+    )
+
     created_at = Column(
         DateTime,
         nullable=False,
