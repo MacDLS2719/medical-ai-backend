@@ -222,16 +222,52 @@ def register_doctor(
             specialty_id=specialty_record.id,
             is_primary=True
         )
-        db.add(doctor_spec)
-        db.commit()
     except Exception as e:
         db.rollback()
-        # Si falla la especialidad, el doctor ya se creó correctamente
+
+    # 6. Asignar suscripción al plan seleccionado
+    selected_plan = None
+    sub_plan_id = getattr(data, "subscription_plan_id", None)
+
+    if sub_plan_id:
+        selected_plan = (
+            db.query(SubscriptionPlan)
+            .filter(
+                SubscriptionPlan.id == sub_plan_id,
+                SubscriptionPlan.is_active == True,
+            )
+            .first()
+        )
+
+    if not selected_plan:
+        selected_plan = (
+            db.query(SubscriptionPlan)
+            .filter(SubscriptionPlan.is_free == False, SubscriptionPlan.is_active == True)
+            .first()
+        )
+
+    if not selected_plan:
+        selected_plan = (
+            db.query(SubscriptionPlan)
+            .filter(SubscriptionPlan.is_active == True)
+            .first()
+        )
+
+    if selected_plan:
+        new_subscription = DoctorSubscription(
+            doctor_id=new_doctor.id,
+            subscription_plan_id=selected_plan.id,
+            status="active",
+        )
+        db.add(new_subscription)
+        db.commit()
 
     return get_doctor_profile(
         current_user=new_user,
         doctor=new_doctor,
+        db=db,
     )
+
 
 
 @router.post(
@@ -319,11 +355,12 @@ def register_free_doctor(
     selected_plan = None
 
     # Intentar usar el plan elegido por el médico
-    if data.subscription_plan_id:
+    sub_plan_id = getattr(data, "subscription_plan_id", None)
+    if sub_plan_id:
         selected_plan = (
             db.query(SubscriptionPlan)
             .filter(
-                SubscriptionPlan.id == data.subscription_plan_id,
+                SubscriptionPlan.id == sub_plan_id,
                 SubscriptionPlan.is_active == True,
             )
             .first()
@@ -364,6 +401,7 @@ def register_free_doctor(
     return get_doctor_profile(
         current_user=new_user,
         doctor=new_doctor,
+        db=db,
     )
 
 
@@ -414,10 +452,35 @@ def get_current_doctor(
 def get_doctor_profile(
     current_user: User = Depends(get_current_user),
     doctor: Doctor = Depends(get_current_doctor),
+    db: Session = Depends(get_db),
 ):
     """
     Obtiene el perfil completo del doctor.
     """
+
+    # Buscar la suscripción activa del doctor
+    active_sub = (
+        db.query(DoctorSubscription)
+        .filter(DoctorSubscription.doctor_id == doctor.id, DoctorSubscription.status == "active")
+        .first()
+    )
+    sub_plan = None
+    if active_sub:
+        sub_plan = (
+            db.query(SubscriptionPlan)
+            .filter(SubscriptionPlan.id == active_sub.subscription_plan_id)
+            .first()
+        )
+
+    subscription_info = {
+        "id": sub_plan.id,
+        "name": sub_plan.name,
+        "slug": sub_plan.slug,
+        "price": float(sub_plan.price),
+        "currency": sub_plan.currency,
+        "billing_interval": sub_plan.billing_interval,
+        "is_free": sub_plan.is_free,
+    } if sub_plan else None
 
     profile_data = {
         # --------------------------------------------------
@@ -494,13 +557,13 @@ def get_doctor_profile(
         "website": doctor.website,
 
         # --------------------------------------------------
-        # POLÍTICA DE DATOS
+        # POLÍTICA DE DATOS Y SUSCRIPCIÓN
         # --------------------------------------------------
 
         "data_policy_accepted": doctor.data_policy_accepted,
         "data_policy_accepted_at": doctor.data_policy_accepted_at,
         "verification_status": getattr(doctor, "verification_status", "pending"),
-
+        "subscription": subscription_info,
 
         # --------------------------------------------------
         # RELACIONES

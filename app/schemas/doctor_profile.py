@@ -396,6 +396,8 @@ class DoctorProfileResponse(BaseModel):
         default_factory=list
     )
 
+    subscription: Optional[dict] = None
+
     model_config = ConfigDict(
         from_attributes=True
     )
@@ -473,6 +475,7 @@ class DoctorFreeCreateRequest(BaseModel):
 
     password: Optional[str] = None
     language: Optional[str] = "es"
+    subscription_plan_id: Optional[int] = None
 
 
 
