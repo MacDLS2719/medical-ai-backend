@@ -18,6 +18,7 @@ from app.routers import (
     websockets,
     doctor_verification,
     transcribe,
+    medical_agent,
 )
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -117,6 +118,10 @@ app.include_router(
 app.include_router(
     doctor_verification.router,
     prefix="/api"
+)
+
+app.include_router(
+    medical_agent.router,
 )
 
 
