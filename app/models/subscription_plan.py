@@ -71,6 +71,13 @@ class SubscriptionPlan(Base):
         server_default=text("'month'"),
     )
 
+    # Paddle Price ID (pri_xxx) — mapeado en Paddle Dashboard
+    paddle_price_id: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        index=True,
+    )
+
     # ==========================================================
     # ESTADO DEL PLAN
     # ==========================================================

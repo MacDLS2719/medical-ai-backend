@@ -31,6 +31,32 @@ class Settings(BaseSettings):
     # Deepgram — transcripción de audio a texto
     DEEPGRAM: str = ""
 
+    # ------------------------------------------------------------------
+    # Paddle — pagos y suscripciones
+    # ------------------------------------------------------------------
+
+    # API Key privada del backend (Bearer token para la Paddle API)
+    PADDLE_API_KEY: str = ""
+
+    # Base URL: sandbox o producción
+    # sandbox  → https://sandbox-api.paddle.com
+    # prod     → https://api.paddle.com
+    PADDLE_API_BASE_URL: str = "https://sandbox-api.paddle.com"
+
+    # Secret para verificar webhooks de Paddle
+    PADDLE_WEBHOOK_SECRET: str = ""
+
+    # Price ID del plan profesional (pri_xxx)
+    PADDLE_DOCTOR_PRICE_ID: str = ""
+
+    # Client token público para inicializar Paddle.js en el frontend
+    # Se obtiene en Paddle Dashboard → Developer Tools → Client-side tokens
+    # Mientras no se tenga, usar la misma API Key como placeholder
+    PADDLE_CLIENT_TOKEN: str = ""
+
+    # "sandbox" | "production"
+    PADDLE_ENVIRONMENT: str = "sandbox"
+
     @computed_field
     @property
     def sync_database_url(self) -> str:

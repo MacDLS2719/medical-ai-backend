@@ -75,6 +75,23 @@ class PaymentDoctor(Base):
     )
 
     # ==========================================================
+    # PADDLE
+    # ==========================================================
+
+    paddle_transaction_id: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        unique=True,
+        index=True,
+    )
+
+    paddle_subscription_id: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        index=True,
+    )
+
+    # ==========================================================
     # INFORMACIÓN DEL PAGO
     # ==========================================================
 

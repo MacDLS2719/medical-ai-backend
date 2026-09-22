@@ -19,6 +19,7 @@ from app.routers import (
     doctor_verification,
     transcribe,
     medical_agent,
+    paddle,
 )
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -122,6 +123,10 @@ app.include_router(
 
 app.include_router(
     medical_agent.router,
+)
+
+app.include_router(
+    paddle.router,
 )
 
 

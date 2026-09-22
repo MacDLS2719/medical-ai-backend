@@ -146,3 +146,9 @@ class DoctorSubscription(Base):
         "SubscriptionPlan",
         back_populates="doctor_subscriptions",
     )
+
+    payments: Mapped[list["PaymentDoctor"]] = relationship(
+        "PaymentDoctor",
+        back_populates="doctor_subscription",
+        cascade="all, delete-orphan",
+    )

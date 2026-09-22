@@ -160,6 +160,7 @@ class Doctor(Base):
         String(150),
         nullable=False
     )
+    
 
     # Información anterior de experiencia.
     # Se mantiene temporalmente por compatibilidad.
@@ -326,6 +327,16 @@ class Doctor(Base):
 
     subscriptions: Mapped[list["DoctorSubscription"]] = relationship(
         "DoctorSubscription",
+        back_populates="doctor",
+        cascade="all, delete-orphan",
+    )
+
+    # ==========================================================
+    # PAGOS
+    # ==========================================================
+
+    payments: Mapped[list["PaymentDoctor"]] = relationship(
+        "PaymentDoctor",
         back_populates="doctor",
         cascade="all, delete-orphan",
     )
