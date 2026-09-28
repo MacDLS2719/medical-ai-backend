@@ -78,22 +78,23 @@ Tu tarea es analizar evidencia médica y devolver exclusivamente JSON válido.
 IMPORTANTE:
 1. RESUMEN MÁS AMPLIO: No te limites solo a los artículos provistos. Aporta de tu propio conocimiento médico sobre la enfermedad o condición consultada. Desarrolla un análisis exhaustivo y detallado.
 2. CITAS EN TEXTO: A medida que construyas tu resumen bien amplio sobre lo que el usuario te pregunto, debes citar explícitamente las referencias dentro del texto usando corchetes numéricos (ej. [1], [2]).
-3. MÍNIMO DE REFERENCIAS REALES: Proporciona al menos 15 referencias médicas de alta calidad. SOLO INCLUYE ARTÍCULOS SI ESTÁS 100% SEGURO DE QUE EL ENLACE (DOI, PMID o URL) FUNCIONA Y MUESTRA INFORMACIÓN VERÍDICA. No incluyas un artículo si dudas de que su enlace esté activo.
-4. FUENTES VERIFICADAS: Si la fuente proviene de las principales revistas médicas o bases científicas de primer nivel (NEJM, Lancet, JAMA, BMJ, Nature, PubMed, NIH, Europe PMC), clásificala como verificada (verified: true). Si viene de repositorios universitarios, artículos secundarios u otros centros de investigación, inclúyelas para dar variedad pero márcalas como (verified: false).
-5. CERO ALUCINACIONES EN ENLACES: NO INVENTES PMIDs, DOIs NI URLs. Esto es crítico. Si no tienes certeza absoluta del identificador real de un artículo, omítelo por completo. ¡Prohibido generar identificadores al azar que lleven a páginas de "no disponible"!
+3. MÍNIMO DE REFERENCIAS REALES: Proporciona al menos 15 referencias médicas de alta calidad. SOLO INCLUYE ARTÍCULOS SI ESTÁS 100% SEGURO DE QUE EL ENLACE (URL, DOI o PMID) FUNCIONA Y MUESTRA LA INFORMACIÓN EXACTA DEL TÍTULO. 
+4. ENLACES VARIADOS Y EXACTOS: No uses solo PubMed. Usa enlaces directos a las revistas y organizaciones (WHO, CDC, NEJM, Lancet, Nature, etc.) en el campo "url". EL TÍTULO DEL ARTÍCULO DEBE COINCIDIR EXACTAMENTE CON EL ARTÍCULO QUE SE ABRE EN EL ENLACE. No pongas un título falso para un enlace real que lleva a otro tema.
+5. FUENTES VERIFICADAS: Si la fuente proviene de las principales revistas médicas o bases científicas de primer nivel (NEJM, Lancet, JAMA, BMJ, Nature, PubMed, NIH, Europe PMC, WHO, CDC), clasifícala como verificada (verified: true). Si viene de otros repositorios, márcalas como (verified: false).
+6. CERO ALUCINACIONES EN ENLACES: NO INVENTES PMIDs, DOIs NI URLs. Si no tienes certeza absoluta del identificador real de un artículo y su título exacto, omítelo por completo. ¡Prohibido generar identificadores al azar!
 
 FORMATO JSON OBLIGATORIO:
 {
     "summary": "Resumen general y amplio de la evidencia, incluyendo tu conocimiento clínico sobre la condición. Incluye citas [1], [2]...",
     "references": [
         {
-            "title": "Título completo",
+            "title": "Título EXACTO del artículo que se abre en el enlace",
             "source": "Nombre exacto de revista u organización",
             "year": "2024",
             "abstract": "Resumen breve de los hallazgos",
             "pmid": "",
             "doi": "10.xxxx/xxxxx",
-            "url": "",
+            "url": "https://www.who.int/... (enlace directo y real)",
             "verified": true
         }
     ]
@@ -121,25 +122,26 @@ IMPORTANTE — MODO UNIVERSITARIO:
    - Repositorios universitarios (Harvard, MIT, Oxford, Stanford, Johns Hopkins, Mayo Clinic, UNAM, etc.)
    - Preprints verificados: bioRxiv, medRxiv
    - Bases académicas: Semantic Scholar, Europe PMC, SSRN, ResearchGate (solo DOI verificados)
-   - Centros de investigación: NIH, WHO technical reports, CDC, INSERM, Max Planck, Karolinska
+   - Centros de investigación: NIH, WHO, CDC, INSERM, Max Planck, Karolinska
    - Tesis doctorales y working papers de universidades de prestigio
-2. CITAS EN TEXTO: A medida que construyas tu resumen bien amplio sobre lo que el usuario te pregunto,Cita referencias dentro del resumen usando [1], [2], etc.
+2. CITAS EN TEXTO: A medida que construyas tu resumen bien amplio sobre lo que el usuario te pregunto, Cita referencias dentro del resumen usando [1], [2], etc.
 3. MÍNIMO 15 REFERENCIAS: Todas con DOI o URL real verificado. Nunca inventes identificadores.
-4. CLASIFICACIÓN: verified: false para todo (son fuentes académicas no clínicas peer-reviewed de primer nivel como NEJM/JAMA). Excepción: si aparece un artículo de revista top, verified: true.
-5. CERO ALUCINACIONES: NO inventes PMIDs, DOIs ni URLs. Si no conoces el enlace exacto, omite ese campo.
+4. ENLACES VARIADOS Y EXACTOS: Usa los enlaces directos a los repositorios o centros. EL TÍTULO DEL ARTÍCULO DEBE COINCIDIR EXACTAMENTE CON EL ENLACE QUE SE ABRE. No inventes títulos para enlaces que van a otros documentos.
+5. CLASIFICACIÓN: verified: false para todo (son fuentes académicas no clínicas peer-reviewed de primer nivel). Excepción: si aparece un artículo de revista top, verified: true.
+6. CERO ALUCINACIONES: NO inventes PMIDs, DOIs ni URLs. Si no conoces el enlace exacto, omite ese campo.
 
 FORMATO JSON OBLIGATORIO:
 {{
     "summary": "Análisis académico exhaustivo enfocado en investigación universitaria y de centros de investigación. Incluye citas [1], [2]...",
     "references": [
         {{
-            "title": "Título completo",
+            "title": "Título EXACTO del artículo que se abre en el enlace",
             "source": "Universidad o centro de investigación",
             "year": "2024",
             "abstract": "Resumen breve de los hallazgos",
             "pmid": "",
             "doi": "10.xxxx/xxxxx",
-            "url": "",
+            "url": "https://... (enlace directo prioritario)",
             "verified": false
         }}
     ]
@@ -227,7 +229,7 @@ class OpenAIService:
     async def _resolve_references(self, references: list) -> list:
         """
         Garantiza que la URL abre DIRECTAMENTE el artículo verificando que no dé 404.
-        Prioridad: Validado(DOI) > Validado(PMID) > Validado(URL) > Validado(Crossref).
+        Prioridad: Validado(URL) > Validado(DOI) > Validado(PMID) > Validado(Crossref).
         """
         if not references:
             return []
@@ -242,15 +244,20 @@ class OpenAIService:
 
                 final_url = ""
 
-                # 1. Probar DOI
-                if doi:
+                # 1. Probar URL directa primero (favorece enlaces de WHO, CDC, etc. y variabilidad)
+                if url.startswith("http"):
+                    if await self._spot_check_url(session, url):
+                        final_url = url
+                        
+                # 2. Probar DOI si no hay URL válida
+                if not final_url and doi:
                     candidate = f"https://doi.org/{doi}"
                     if await self._spot_check_url(session, candidate):
                         final_url = candidate
                     else:
                         print(f"DOI inválido descartado: {candidate}")
                         
-                # 2. Probar PMID si el DOI falló
+                # 3. Probar PMID
                 if not final_url and pmid.isdigit():
                     candidate = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/"
                     try:
@@ -266,11 +273,6 @@ class OpenAIService:
                                 print(f"PMID inválido descartado: {candidate}")
                     except Exception:
                         pass
-                
-                # 3. Probar URL directa
-                if not final_url and url.startswith("http"):
-                    if await self._spot_check_url(session, url):
-                        final_url = url
                 
                 # 4. Búsqueda en Crossref (solo si lo demás falló)
                 if not final_url and title:
