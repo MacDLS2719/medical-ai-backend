@@ -201,10 +201,10 @@ class MedicalConversationService:
         # Determinar receptor
         # ------------------------------------------------------
 
-        if conversation.patient_id == sender_id:
-            receiver_id = conversation.doctor_id
+        if int(conversation.patient_id) == int(sender_id):
+            receiver_id = int(conversation.doctor_id)
         else:
-            receiver_id = conversation.patient_id
+            receiver_id = int(conversation.patient_id)
 
         # ------------------------------------------------------
         # Crear mensaje
