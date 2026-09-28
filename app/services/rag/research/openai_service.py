@@ -78,7 +78,7 @@ Tu tarea es analizar evidencia médica y devolver exclusivamente JSON válido.
 IMPORTANTE:
 1. RESUMEN MÁS AMPLIO: No te limites solo a los artículos provistos. Aporta de tu propio conocimiento médico sobre la enfermedad o condición consultada. Desarrolla un análisis exhaustivo y detallado.
 2. CITAS EN TEXTO: A medida que construyas tu resumen bien amplio sobre lo que el usuario te pregunto, debes citar explícitamente las referencias dentro del texto usando corchetes numéricos (ej. [1], [2]).
-3. MÍNIMO DE REFERENCIAS REALES: Proporciona al menos 15 referencias médicas de alta calidad. SOLO INCLUYE ARTÍCULOS SI ESTÁS 100% SEGURO DE QUE EL ENLACE (URL, DOI o PMID) FUNCIONA Y MUESTRA LA INFORMACIÓN EXACTA DEL TÍTULO. 
+3. MÍNIMO DE REFERENCIAS REALES Y CON CONTENIDO: Proporciona al menos 15 referencias médicas de alta calidad. SOLO INCLUYE ARTÍCULOS SI ESTÁS 100% SEGURO DE QUE EL ENLACE FUNCIONA, EL TÍTULO ES EXACTO, Y EL ARTÍCULO TIENE UN ABSTRACT (RESUMEN) O TEXTO COMPLETO PÚBLICAMENTE DISPONIBLE. No incluyas enlaces a páginas vacías o donde no se pueda leer nada del contenido.
 4. ENLACES VARIADOS Y EXACTOS: No uses solo PubMed. Usa enlaces directos a las revistas y organizaciones (WHO, CDC, NEJM, Lancet, Nature, etc.) en el campo "url". EL TÍTULO DEL ARTÍCULO DEBE COINCIDIR EXACTAMENTE CON EL ARTÍCULO QUE SE ABRE EN EL ENLACE. No pongas un título falso para un enlace real que lleva a otro tema.
 5. FUENTES VERIFICADAS: Si la fuente proviene de las principales revistas médicas o bases científicas de primer nivel (NEJM, Lancet, JAMA, BMJ, Nature, PubMed, NIH, Europe PMC, WHO, CDC), clasifícala como verificada (verified: true). Si viene de otros repositorios, márcalas como (verified: false).
 6. CERO ALUCINACIONES EN ENLACES: NO INVENTES PMIDs, DOIs NI URLs. Si no tienes certeza absoluta del identificador real de un artículo y su título exacto, omítelo por completo. ¡Prohibido generar identificadores al azar!
@@ -91,7 +91,7 @@ FORMATO JSON OBLIGATORIO:
             "title": "Título EXACTO del artículo que se abre en el enlace",
             "source": "Nombre exacto de revista u organización",
             "year": "2024",
-            "abstract": "Resumen breve de los hallazgos",
+            "abstract": "Resumen detallado de los hallazgos (OBLIGATORIO: no dejar vacío, el enlace debe contener esta info)",
             "pmid": "",
             "doi": "10.xxxx/xxxxx",
             "url": "https://www.who.int/... (enlace directo y real)",
@@ -125,7 +125,7 @@ IMPORTANTE — MODO UNIVERSITARIO:
    - Centros de investigación: NIH, WHO, CDC, INSERM, Max Planck, Karolinska
    - Tesis doctorales y working papers de universidades de prestigio
 2. CITAS EN TEXTO: A medida que construyas tu resumen bien amplio sobre lo que el usuario te pregunto, Cita referencias dentro del resumen usando [1], [2], etc.
-3. MÍNIMO 15 REFERENCIAS: Todas con DOI o URL real verificado. Nunca inventes identificadores.
+3. MÍNIMO 15 REFERENCIAS Y CON CONTENIDO: Todas con DOI o URL real verificado. Nunca inventes identificadores. SOLO INCLUYE ARTÍCULOS QUE TENGAN UN ABSTRACT O TEXTO COMPLETO PÚBLICO. No incluyas enlaces de páginas sin información.
 4. ENLACES VARIADOS Y EXACTOS: Usa los enlaces directos a los repositorios o centros. EL TÍTULO DEL ARTÍCULO DEBE COINCIDIR EXACTAMENTE CON EL ENLACE QUE SE ABRE. No inventes títulos para enlaces que van a otros documentos.
 5. CLASIFICACIÓN: verified: false para todo (son fuentes académicas no clínicas peer-reviewed de primer nivel). Excepción: si aparece un artículo de revista top, verified: true.
 6. CERO ALUCINACIONES: NO inventes PMIDs, DOIs ni URLs. Si no conoces el enlace exacto, omite ese campo.
@@ -138,7 +138,7 @@ FORMATO JSON OBLIGATORIO:
             "title": "Título EXACTO del artículo que se abre en el enlace",
             "source": "Universidad o centro de investigación",
             "year": "2024",
-            "abstract": "Resumen breve de los hallazgos",
+            "abstract": "Resumen detallado de los hallazgos (OBLIGATORIO: no dejar vacío, el enlace debe contener esta info)",
             "pmid": "",
             "doi": "10.xxxx/xxxxx",
             "url": "https://... (enlace directo prioritario)",
@@ -167,13 +167,31 @@ class OpenAIService:
         self.client = AsyncOpenAI(api_key=api_key) if api_key else None
         self.model = os.getenv("OPENAI_MODEL", "gpt-4o")
 
-    async def _spot_check_url(self, session: aiohttp.ClientSession, url: str) -> bool:
+    async def _spot_check_url(self, session: aiohttp.ClientSession, url: str, allow_403: bool = True) -> bool:
         if not url or not url.startswith("http"):
             return False
         try:
-            headers = {"User-Agent": "Mozilla/5.0 (MIVOR.ai medical bot)"}
-            async with session.head(url, timeout=aiohttp.ClientTimeout(total=8), allow_redirects=True, headers=headers) as response:
-                return response.status < 400 or response.status in (401, 403)
+            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+            # Usar GET en vez de HEAD porque algunos servidores devuelven 403 a HEAD pero 404 a GET
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=8), allow_redirects=True, headers=headers) as response:
+                if response.status == 404:
+                    return False
+                html_preview = await response.text()
+                html_preview = html_preview.lower()
+                # Catch fake 200 OK pages that son en realidad 404s (Lancet, Nature, Elsevier, BMJ, etc.)
+                error_phrases = [
+                    "404 not found", "page not found", "article not found", 
+                    "the page you are looking for", "error 404", "could not be found",
+                    "we can't find", "no results were found", "page unavailable"
+                ]
+                if any(phrase in html_preview for phrase in error_phrases):
+                    return False
+                
+                if response.status < 400:
+                    return True
+                if allow_403 and response.status in (401, 403):
+                    return True
+                return False
         except Exception:
             return False
 
@@ -241,46 +259,46 @@ class OpenAIService:
                 doi = _normalize_doi(ref.get("doi"))
                 url = _clean(ref.get("url"))
                 title = _clean(ref.get("title"))
+                abstract = _clean(ref.get("abstract"))
+
+                if not abstract or len(abstract) < 20 or "sin resumen" in abstract.lower() or "no abstract" in abstract.lower():
+                    print(f"Referencia descartada por falta de abstract: {title}")
+                    continue
 
                 final_url = ""
 
-                # 1. Probar URL directa primero (favorece enlaces de WHO, CDC, etc. y variabilidad)
-                if url.startswith("http"):
-                    if await self._spot_check_url(session, url):
-                        final_url = url
-                        
-                # 2. Probar DOI si no hay URL válida
-                if not final_url and doi:
-                    candidate = f"https://doi.org/{doi}"
-                    if await self._spot_check_url(session, candidate):
-                        final_url = candidate
-                    else:
-                        print(f"DOI inválido descartado: {candidate}")
-                        
-                # 3. Probar PMID
-                if not final_url and pmid.isdigit():
-                    candidate = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/"
-                    try:
-                        headers = {"User-Agent": "Mozilla/5.0 (MIVOR.ai medical bot)"}
-                        async with session.get(candidate, timeout=aiohttp.ClientTimeout(total=8), allow_redirects=True, headers=headers) as response:
-                            if response.status < 400:
-                                html_text = await response.text()
-                                if "is not available" not in html_text and "No results were found" not in html_text:
-                                    final_url = candidate
-                                else:
-                                    print(f"PMID inventado/no disponible descartado: {candidate}")
-                            else:
-                                print(f"PMID inválido descartado: {candidate}")
-                    except Exception:
-                        pass
-                
-                # 4. Búsqueda en Crossref (solo si lo demás falló)
-                if not final_url and title:
+                # 1. CROSSREF PRIMERO: Garantiza 100% que el Enlace corresponde al Título.
+                # Ignoramos el DOI inventado por la IA y buscamos el título real.
+                if title:
                     crossref_doi = await self._search_crossref_doi(session, title)
                     if crossref_doi:
                         candidate = f"https://doi.org/{crossref_doi}"
                         if await self._spot_check_url(session, candidate):
                             final_url = candidate
+                            
+                # 2. URL DIRECTA: Solo si Crossref no lo encontró (para organizaciones como OMS, CDC)
+                if not final_url and url.startswith("http"):
+                    # allow_403=False para evitar aceptar URLs falsas que solo devuelven 403 por Cloudflare
+                    if await self._spot_check_url(session, url, allow_403=False):
+                        final_url = url
+                        
+                # 3. PMID: Último recurso
+                if not final_url and pmid.isdigit():
+                    candidate = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/"
+                    try:
+                        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0"}
+                        async with session.get(candidate, timeout=aiohttp.ClientTimeout(total=8), allow_redirects=True, headers=headers) as response:
+                            if response.status < 400:
+                                html_text = await response.text()
+                                if "is not available" not in html_text and "No results were found" not in html_text:
+                                    final_url = candidate
+                    except Exception:
+                        pass
+                
+                # Descartar si no hay un enlace validado
+                if not final_url:
+                    print(f"Referencia descartada (Alucinación de enlace/título o Error 404): {title}")
+                    continue
 
                 # Guardar solo si encontramos un enlace válido real
                 if final_url:
@@ -303,6 +321,49 @@ class OpenAIService:
             seen.add(key)
             unique.append(ref)
         return unique
+
+    def _fix_summary_citations(self, summary: str, original_refs: list, final_refs: list) -> str:
+        """
+        Corrige los números de cita en el texto del resumen para que coincidan
+        con la lista final de referencias, después de haber eliminado duplicados o descartado enlaces.
+        """
+        import re
+        
+        def _get_key(ref):
+            return _clean(ref.get("title")).lower()
+            
+        final_keys = [_get_key(r) for r in final_refs]
+        
+        old_to_new = {}
+        for i, ref in enumerate(original_refs, 1):
+            k = _get_key(ref)
+            if k in final_keys:
+                old_to_new[i] = final_keys.index(k) + 1
+            else:
+                old_to_new[i] = None
+
+        def replace_match(match):
+            try:
+                idx = int(match.group(1))
+                if idx in old_to_new:
+                    new_idx = old_to_new[idx]
+                    if new_idx is not None:
+                        return f"[{new_idx}]"
+                    else:
+                        return ""
+            except ValueError:
+                pass
+            return match.group(0)
+
+        # Reemplazar citas del tipo [1], [2]
+        new_summary = re.sub(r'\[(\d+)\]', replace_match, summary)
+        
+        # Limpiar posibles espacios extra que queden al eliminar citas: "Hola . " -> "Hola."
+        new_summary = new_summary.replace(" []", "").replace("[]", "")
+        new_summary = re.sub(r'\s+\.', '.', new_summary)
+        new_summary = re.sub(r'\s+,', ',', new_summary)
+        
+        return new_summary
 
     def _build_response(self, summary: str, references: list) -> dict:
         """Devuelve un objeto estructurado en lugar de un string markdown."""
@@ -369,6 +430,9 @@ class OpenAIService:
                     print(f"Error en fallback: {e}")
 
             resolved = self._deduplicate_references(resolved)
+            
+            # Corregir la numeración de las citas en el texto
+            summary = self._fix_summary_citations(summary, references, resolved)
             
             # Devolver objeto JSON estructurado para el frontend
             return self._build_response(summary, resolved)
@@ -449,6 +513,10 @@ class OpenAIService:
                     print(f"Error en fallback universitario: {e}")
 
             resolved = self._deduplicate_references(resolved)
+            
+            # Corregir la numeración de las citas en el texto
+            summary = self._fix_summary_citations(summary, references, resolved)
+            
             return self._build_response(summary, resolved)
 
         except Exception as e:
