@@ -1,0 +1,491 @@
+import json
+import os
+
+from typing import List
+
+from groq import AsyncGroq
+
+
+class MedicalAgentService:
+
+    # ============================================================
+    # FUENTES MÉDICAS AUTORIZADAS
+    # ============================================================
+
+    ALLOWED_SOURCES = {
+        "nejm": "NEJM",
+        "lancet": "The Lancet",
+        "lancet_global_health": "The Lancet Global Health",
+        "lancet_public_health": "The Lancet Public Health",
+        "jama": "JAMA",
+        "jama_network_open": "JAMA Network Open",
+        "bmj": "BMJ",
+        "nature_medicine": "Nature Medicine",
+        "annals_internal_medicine": "Annals of Internal Medicine",
+        "nature": "Nature",
+        "science": "Science",
+        "science_translational_medicine": "Science Translational Medicine",
+        "ctis": "EU Clinical Trials Register / CTIS",
+        "who": "WHO",
+        "nih": "NIH",
+        "ema": "EMA",
+        "fda": "FDA",
+        "cdc": "CDC",
+        "ecdc": "ECDC",
+    }
+
+    def __init__(self):
+
+        self.api_key = os.getenv("GROQ_API_KEY")
+
+        self.model = os.getenv(
+            "GROQ_MODEL",
+            "openai/gpt-oss-120b",
+        )
+
+        if not self.api_key:
+            raise RuntimeError(
+                "GROQ_API_KEY no está configurada en las variables de entorno."
+            )
+
+        self.client = AsyncGroq(
+            api_key=self.api_key
+        )
+
+    # ============================================================
+    # OBTENER FUENTES
+    # ============================================================
+
+    def _get_sources(
+        self,
+        source_slug: str,
+    ) -> str:
+
+        if source_slug == "all":
+
+            return "\n".join(
+                f"- {name}"
+                for name in self.ALLOWED_SOURCES.values()
+            )
+
+        source_name = self.ALLOWED_SOURCES.get(
+            source_slug
+        )
+
+        if not source_name:
+
+            raise ValueError(
+                f"Fuente médica no autorizada: {source_slug}"
+            )
+
+        return f"- {source_name}"
+
+    # ============================================================
+    # 1. BÚSQUEDA REAL
+    # ============================================================
+
+    async def _search_web(
+        self,
+        query: str,
+        source_slug: str,
+        max_results: int,
+    ) -> str:
+
+        sources_text = self._get_sources(
+            source_slug
+        )
+
+        if source_slug == "all":
+
+            source_instruction = (
+                "Busca en las fuentes médicas autorizadas "
+                "más relevantes para la consulta."
+            )
+
+        else:
+
+            source_name = self.ALLOWED_SOURCES[
+                source_slug
+            ]
+
+            source_instruction = (
+                f"Busca únicamente en {source_name}."
+            )
+
+        search_prompt = f"""
+Eres el agente de búsqueda médica de MIVOR.ai.
+
+Debes realizar una búsqueda REAL utilizando la herramienta
+de búsqueda web disponible.
+
+CONSULTA:
+
+{query}
+
+{source_instruction}
+
+FUENTES AUTORIZADAS:
+
+{sources_text}
+
+REGLAS:
+
+1. Realiza una búsqueda real.
+
+2. No utilices únicamente tu conocimiento interno.
+
+3. Busca documentos, artículos, estudios, guías o
+   publicaciones que realmente existan.
+
+4. Las fuentes deben pertenecer a la lista autorizada.
+
+5. Necesitamos la URL REAL encontrada durante la búsqueda.
+
+6. No inventes URLs.
+
+7. No inventes títulos.
+
+8. No inventes fechas.
+
+9. No inventes artículos.
+
+10. Prioriza resultados relevantes y recientes.
+
+11. Devuelve todos los datos disponibles de los resultados
+    encontrados para que otro proceso pueda normalizarlos.
+
+La búsqueda debe producir información suficiente para
+posteriormente generar una respuesta estructurada.
+"""
+
+        response = await self.client.chat.completions.create(
+
+            model=self.model,
+
+            messages=[
+                {
+                    "role": "system",
+                    "content": search_prompt,
+                },
+                {
+                    "role": "user",
+                    "content": query,
+                },
+            ],
+
+            temperature=0.1,
+
+            max_completion_tokens=4096,
+
+            tools=[
+                {
+                    "type": "browser_search"
+                }
+            ],
+
+            tool_choice="required",
+        )
+
+        message = response.choices[0].message
+
+        # --------------------------------------------------------
+        # El contenido de esta primera llamada representa
+        # la información encontrada durante la búsqueda.
+        # --------------------------------------------------------
+
+        return message.content or ""
+
+    # ============================================================
+    # 2. NORMALIZAR RESULTADOS CON GROQ
+    # ============================================================
+
+    async def _normalize_results(
+        self,
+        query: str,
+        search_results: str,
+        source_slug: str,
+        max_results: int,
+    ) -> List[dict]:
+
+        if source_slug == "all":
+
+            sources_text = "\n".join(
+                f"- {name}"
+                for name in self.ALLOWED_SOURCES.values()
+            )
+
+        else:
+
+            sources_text = (
+                f"- {self.ALLOWED_SOURCES[source_slug]}"
+            )
+
+        normalization_prompt = f"""
+Eres el Medical Agent de MIVOR.ai.
+
+Tu función ahora NO es realizar una nueva búsqueda.
+
+Debes organizar y normalizar exclusivamente los resultados
+obtenidos previamente mediante una búsqueda real.
+
+CONSULTA ORIGINAL:
+
+{query}
+
+FUENTES AUTORIZADAS:
+
+{sources_text}
+
+RESULTADOS DE LA BÚSQUEDA:
+
+{search_results}
+
+REGLAS:
+
+1. Utiliza únicamente la información contenida en los
+   resultados de búsqueda.
+
+2. NO inventes artículos.
+
+3. NO inventes títulos.
+
+4. NO inventes fechas.
+
+5. NO inventes URLs.
+
+6. Conserva exactamente las URLs encontradas.
+
+7. Si una URL no está disponible, utiliza null.
+
+8. No agregues fuentes que no aparezcan en los resultados.
+
+9. Elimina resultados duplicados.
+
+10. Prioriza los resultados más relevantes.
+
+11. Ordena por fecha de publicación, del más reciente
+    al más antiguo cuando la fecha esté disponible.
+
+12. El abstract debe corresponder a la información encontrada.
+
+13. El summary debe ser un resumen breve generado a partir
+    de la información disponible.
+
+Devuelve la respuesta exclusivamente en un objeto JSON válido con exactamente este formato:
+
+{{
+    "results": [
+        {{
+            "source": "nombre de la fuente",
+            "title": "título real",
+            "abstract": "abstract disponible",
+            "summary": "resumen",
+            "url": "URL REAL",
+            "published_at": "YYYY-MM-DD"
+        }}
+    ]
+}}
+
+Devuelve como máximo {max_results} resultados.
+"""
+
+        response = await self.client.chat.completions.create(
+
+            model=self.model,
+
+            messages=[
+                {
+                    "role": "system",
+                    "content": normalization_prompt,
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        "Organiza los resultados "
+                        "obtenidos en la búsqueda en formato JSON."
+                    ),
+                },
+            ],
+
+            temperature=0.1,
+
+            max_completion_tokens=4096,
+
+            # ====================================================
+            # AQUÍ SÍ UTILIZAMOS JSON STRUCTURED OUTPUT
+            # ====================================================
+
+            response_format={
+                "type": "json_object"
+            },
+        )
+
+        content = (
+            response.choices[0].message.content
+            or "{}"
+        )
+
+        try:
+
+            data = json.loads(content)
+
+        except json.JSONDecodeError as e:
+
+            print(
+                "[MedicalAgent] Error parseando "
+                f"JSON de normalización: {e}"
+            )
+
+            return []
+
+        results = data.get(
+            "results",
+            []
+        )
+
+        if not isinstance(results, list):
+            return []
+
+        return results[:max_results]
+
+    # ============================================================
+    # BÚSQUEDA PRINCIPAL
+    # ============================================================
+
+    async def search(
+        self,
+        query: str,
+        source_slug: str = "all",
+        max_results: int = 10,
+    ) -> List[dict]:
+
+        if not query or not query.strip():
+            return []
+
+        if source_slug != "all":
+
+            if source_slug not in self.ALLOWED_SOURCES:
+
+                raise ValueError(
+                    f"Fuente médica no autorizada: {source_slug}"
+                )
+
+        max_results = max(
+            1,
+            min(max_results, 20),
+        )
+
+        # ========================================================
+        # PASO 1
+        # BÚSQUEDA REAL
+        # ========================================================
+
+        print(
+            "[MedicalAgent] Iniciando búsqueda real..."
+        )
+
+        search_results = await self._search_web(
+            query=query,
+            source_slug=source_slug,
+            max_results=max_results,
+        )
+
+        if not search_results:
+
+            print(
+                "[MedicalAgent] No se obtuvieron "
+                "resultados de búsqueda."
+            )
+
+            return []
+
+        # ========================================================
+        # PASO 2
+        # NORMALIZACIÓN
+        # ========================================================
+
+        print(
+            "[MedicalAgent] Normalizando resultados..."
+        )
+
+        normalized_results = await self._normalize_results(
+            query=query,
+            search_results=search_results,
+            source_slug=source_slug,
+            max_results=max_results,
+        )
+
+        # ========================================================
+        # PASO 3
+        # LIMPIEZA FINAL
+        # ========================================================
+
+        clean = []
+
+        for item in normalized_results:
+
+            if not isinstance(item, dict):
+                continue
+
+            source = (
+                item.get("source")
+                or ""
+            ).strip()
+
+            title = (
+                item.get("title")
+                or ""
+            ).strip()
+
+            abstract = (
+                item.get("abstract")
+                or "Sin resumen disponible."
+            ).strip()
+
+            summary = (
+                item.get("summary")
+                or ""
+            ).strip()
+
+            url = (
+                item.get("url")
+                or None
+            )
+
+            published_at = (
+                item.get("published_at")
+                or None
+            )
+
+            if not source or not title:
+                continue
+
+            clean.append(
+                {
+                    "source": source,
+                    "title": title,
+                    "abstract": abstract,
+                    "summary": summary,
+                    "url": url,
+                    "published_at": published_at,
+                }
+            )
+
+        # ========================================================
+        # ORDENAR POR FECHA
+        # ========================================================
+
+        clean.sort(
+            key=lambda item: (
+                item.get("published_at")
+                or ""
+            ),
+            reverse=True,
+        )
+
+        print(
+            "[MedicalAgent] Resultados finales:",
+            len(clean),
+        )
+
+        return clean[:max_results]

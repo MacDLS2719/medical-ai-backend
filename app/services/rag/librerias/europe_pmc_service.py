@@ -121,7 +121,17 @@ class EuropePMCService:
                 publisher = publisher.strip()
 
             # URL - normalizar
-            url = f"https://europepmc.org/article/{source_id}" if source_id else ""
+            url = ""
+            if pmcid:
+                # PMCID can be used with PMC source
+                url = f"https://europepmc.org/article/PMC/{pmcid.replace('PMC', '')}"
+            elif pmid:
+                # PMID is used with MED source
+                url = f"https://europepmc.org/article/MED/{pmid}"
+            else:
+                # Fallback if there's any other source_id
+                source_db = item.get("source", "MED")
+                url = f"https://europepmc.org/article/{source_db}/{source_id}" if source_id else ""
 
             return NormalizedDocument(
                 source_id=source_id,

@@ -326,9 +326,9 @@ class OpenFDAService:
             # URL
             # ==================================================
 
+            # Usar enlace de DailyMed para visualización humana en lugar de la API JSON
             url = (
-                f"https://api.fda.gov/drug/label.json"
-                f"?search=set_id:{set_id}"
+                f"https://dailymed.nlm.nih.gov/dailymed/lookup.cfm?setid={set_id}"
             )
 
             # ==================================================

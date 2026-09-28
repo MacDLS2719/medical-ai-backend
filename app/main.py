@@ -20,6 +20,7 @@ from app.routers import (
     transcribe,
     medical_agent,
     paddle,
+    advanced_search,
 )
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -127,6 +128,10 @@ app.include_router(
 
 app.include_router(
     paddle.router,
+)
+
+app.include_router(
+    advanced_search.router,
 )
 
 
