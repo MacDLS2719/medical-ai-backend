@@ -167,15 +167,16 @@ class OpenAIService:
         self.client = AsyncOpenAI(api_key=api_key) if api_key else None
         self.model = os.getenv("OPENAI_MODEL", "gpt-4o")
 
-    async def _spot_check_url(self, session: aiohttp.ClientSession, url: str, allow_403: bool = True) -> bool:
+    async def _spot_check_url(self, session: aiohttp.ClientSession, url: str, allow_403: bool = True) -> tuple[bool, str]:
         if not url or not url.startswith("http"):
-            return False
+            return False, url
         try:
             headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
             # Usar GET en vez de HEAD porque algunos servidores devuelven 403 a HEAD pero 404 a GET
             async with session.get(url, timeout=aiohttp.ClientTimeout(total=8), allow_redirects=True, headers=headers) as response:
+                final_redirected_url = str(response.url)
                 if response.status == 404:
-                    return False
+                    return False, final_redirected_url
                 html_preview = await response.text()
                 html_preview = html_preview.lower()
                 # Catch fake 200 OK pages that son en realidad 404s (Lancet, Nature, Elsevier, BMJ, etc.)
@@ -185,15 +186,15 @@ class OpenAIService:
                     "we can't find", "no results were found", "page unavailable"
                 ]
                 if any(phrase in html_preview for phrase in error_phrases):
-                    return False
+                    return False, final_redirected_url
                 
                 if response.status < 400:
-                    return True
+                    return True, final_redirected_url
                 if allow_403 and response.status in (401, 403):
-                    return True
-                return False
+                    return True, final_redirected_url
+                return False, final_redirected_url
         except Exception:
-            return False
+            return False, url
 
     async def _search_crossref_doi(self, session: aiohttp.ClientSession, title: str) -> str:
         """Busca el título en Crossref para encontrar el DOI exacto."""
@@ -210,9 +211,12 @@ class OpenAIService:
                     data = await response.json()
                     items = data.get("message", {}).get("items", [])
                     for item in items:
-                        # Verificación simple: que el título de Crossref coincida en buena medida
+                        # Verificación flexible: comparar primeras palabras significativas del título
                         item_title = item.get("title", [""])[0].lower()
-                        if title.lower()[:30] in item_title or item_title[:30] in title.lower():
+                        query_words = set(title.lower().split()[:6])  # primeras 6 palabras
+                        item_words = set(item_title.split()[:8])
+                        overlap = len(query_words & item_words)
+                        if overlap >= 3 or title.lower()[:40] in item_title or item_title[:40] in title.lower():
                             return item.get("DOI", "")
         except Exception:
             pass
@@ -243,6 +247,103 @@ class OpenAIService:
             if cleaned.startswith("```"): cleaned = cleaned[3:]
             if cleaned.endswith("```"): cleaned = cleaned[:-3]
             return json.loads(cleaned.strip())
+    def _get_source_from_url(self, final_url: str, fallback: str) -> str:
+        """Extrae el nombre real de la revista u organización desde el dominio de la URL."""
+        if not final_url:
+            return fallback or "Medical Journal"
+            
+        domain_names = {
+            'nejm.org': 'NEJM',
+            'thelancet.com': 'The Lancet',
+            'jamanetwork.com': 'JAMA',
+            'bmj.com': 'BMJ',
+            'nature.com': 'Nature',
+            'science.org': 'Science',
+            'annals.org': 'Annals of Internal Medicine',
+            'pubmed.ncbi.nlm.nih.gov': 'PubMed',
+            'ncbi.nlm.nih.gov': 'PubMed / NIH',
+            'pmc.ncbi.nlm.nih.gov': 'PubMed Central',
+            'europepmc.org': 'Europe PMC',
+            'cochranelibrary.com': 'Cochrane Library',
+            'who.int': 'OMS / WHO',
+            'cdc.gov': 'CDC',
+            'nih.gov': 'NIH',
+            'fda.gov': 'FDA',
+            'ema.europa.eu': 'EMA',
+            'clinicaltrials.gov': 'ClinicalTrials.gov',
+            'medrxiv.org': 'medRxiv',
+            'biorxiv.org': 'bioRxiv',
+            'scielo.org': 'SciELO',
+            'scielo.br': 'SciELO Brasil',
+            'scielo.cl': 'SciELO Chile',
+            'scielo.conicyt.cl': 'SciELO Chile',
+            'scielo.isciii.es': 'SciELO España',
+            'redalyc.org': 'Redalyc',
+            'researchgate.net': 'ResearchGate',
+            'semanticscholar.org': 'Semantic Scholar',
+            'springer.com': 'Springer',
+            'springerlink.com': 'SpringerLink',
+            'link.springer.com': 'Springer',
+            'wiley.com': 'Wiley',
+            'onlinelibrary.wiley.com': 'Wiley Online Library',
+            'elsevier.com': 'Elsevier',
+            'sciencedirect.com': 'ScienceDirect',
+            'cell.com': 'Cell',
+            'jci.org': 'Journal of Clinical Investigation',
+            'ahajournals.org': 'AHA Journals',
+            'academic.oup.com': 'Oxford Academic',
+            'karger.com': 'Karger',
+            'mdpi.com': 'MDPI',
+            'frontiersin.org': 'Frontiers',
+            'plos.org': 'PLOS',
+            'plosone.org': 'PLOS ONE',
+            'plosmedicine.org': 'PLOS Medicine',
+        }
+        
+        try:
+            parsed = urllib.parse.urlparse(final_url)
+            host = parsed.netloc.lower()
+            if host.startswith("www."):
+                host = host[4:]
+                
+            if host in ("doi.org", "dx.doi.org"):
+                path_parts = [p for p in parsed.path.split("/") if p]
+                if path_parts:
+                    prefix = path_parts[0]
+                    doi_prefixes = {
+                        '10.1056': 'NEJM',
+                        '10.1016': 'Elsevier / ScienceDirect',
+                        '10.1001': 'JAMA',
+                        '10.1136': 'BMJ',
+                        '10.1038': 'Nature',
+                        '10.1126': 'Science',
+                        '10.7326': 'Annals of Internal Medicine',
+                        '10.1182': 'Blood (ASH)',
+                        '10.1200': 'JCO (ASCO)',
+                        '10.1093': 'Oxford University Press',
+                        '10.1002': 'Wiley',
+                        '10.1007': 'Springer',
+                        '10.3389': 'Frontiers',
+                        '10.1371': 'PLOS',
+                        '10.3390': 'MDPI',
+                    }
+                    if prefix in doi_prefixes:
+                        return doi_prefixes[prefix]
+                return fallback or "DOI"
+
+            if host in domain_names:
+                return domain_names[host]
+                
+            for k, v in domain_names.items():
+                if host.endswith(k):
+                    return v
+                    
+            parts = host.split('.')
+            base = parts[-2] if len(parts) >= 2 else parts[0]
+            return base.capitalize()
+            
+        except Exception:
+            return fallback or "Medical Journal"
 
     async def _resolve_references(self, references: list) -> list:
         """
@@ -261,28 +362,40 @@ class OpenAIService:
                 title = _clean(ref.get("title"))
                 abstract = _clean(ref.get("abstract"))
 
-                if not abstract or len(abstract) < 20 or "sin resumen" in abstract.lower() or "no abstract" in abstract.lower():
+                # Filtro de abstract más permisivo: solo descartamos si está completamente vacío
+                # o contiene frases explícitas de ausencia. Abstracts cortos son válidos.
+                if not abstract or "sin resumen" in abstract.lower() or "no abstract available" in abstract.lower():
                     print(f"Referencia descartada por falta de abstract: {title}")
                     continue
 
                 final_url = ""
 
-                # 1. CROSSREF PRIMERO: Garantiza 100% que el Enlace corresponde al Título.
+                # 1. CROSSREF PRIMERO: Garantiza que el Enlace corresponde al Título.
                 # Ignoramos el DOI inventado por la IA y buscamos el título real.
                 if title:
                     crossref_doi = await self._search_crossref_doi(session, title)
                     if crossref_doi:
                         candidate = f"https://doi.org/{crossref_doi}"
-                        if await self._spot_check_url(session, candidate):
-                            final_url = candidate
-                            
-                # 2. URL DIRECTA: Solo si Crossref no lo encontró (para organizaciones como OMS, CDC)
+                        is_valid, resolved_url = await self._spot_check_url(session, candidate)
+                        if is_valid:
+                            final_url = resolved_url
+
+                # 2. DOI proporcionado por GPT: si Crossref no lo encontró y hay DOI
+                if not final_url and doi:
+                    candidate = f"https://doi.org/{doi}"
+                    is_valid, resolved_url = await self._spot_check_url(session, candidate)
+                    if is_valid:
+                        final_url = resolved_url
+
+                # 3. URL DIRECTA: para organizaciones como OMS, CDC, preprints, etc.
+                # allow_403=True porque NEJM, Lancet, Nature y Elsevier devuelven 403
+                # a bots aunque el artículo existe realmente.
                 if not final_url and url.startswith("http"):
-                    # allow_403=False para evitar aceptar URLs falsas que solo devuelven 403 por Cloudflare
-                    if await self._spot_check_url(session, url, allow_403=False):
-                        final_url = url
-                        
-                # 3. PMID: Último recurso
+                    is_valid, resolved_url = await self._spot_check_url(session, url, allow_403=True)
+                    if is_valid:
+                        final_url = resolved_url
+
+                # 4. PMID: Último recurso
                 if not final_url and pmid.isdigit():
                     candidate = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/"
                     try:
@@ -291,18 +404,19 @@ class OpenAIService:
                             if response.status < 400:
                                 html_text = await response.text()
                                 if "is not available" not in html_text and "No results were found" not in html_text:
-                                    final_url = candidate
+                                    final_url = str(response.url)
                     except Exception:
                         pass
-                
+
                 # Descartar si no hay un enlace validado
                 if not final_url:
-                    print(f"Referencia descartada (Alucinación de enlace/título o Error 404): {title}")
+                    print(f"Referencia descartada (sin URL válida): {title}")
                     continue
 
                 # Guardar solo si encontramos un enlace válido real
                 if final_url:
                     ref["_final_url"] = final_url
+                    ref["source"] = self._get_source_from_url(final_url, ref.get("source"))
                     resolved.append(ref)
 
         return resolved

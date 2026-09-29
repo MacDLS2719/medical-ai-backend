@@ -44,9 +44,9 @@ class MedicalSearchService:
             elif isinstance(result, Exception):
                 print(f"Error al obtener resultados de una de las librerías: {result}")
                 
-        # Si no se encontró ningún documento, se lo indicamos a GPT también o retornamos directo
+        # Si no se encontró ningún documento, se lo indicamos a GPT para que use su conocimiento
         if not all_documents:
-            return "No se encontró información en las librerías para la búsqueda proporcionada."
+            print("No se encontró información en las librerías para la búsqueda proporcionada. Consultando a OpenAI...")
             
         # Llamar a OpenAI para que estructure el resumen general y las referencias
         summary_markdown = await openai_service.generate_research_summary(query, all_documents)
