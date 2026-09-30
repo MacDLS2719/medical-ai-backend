@@ -2,6 +2,7 @@ from datetime import datetime, date, time, timedelta
 
 from sqlalchemy.orm import Session
 
+from app.models.doctor import Doctor
 from app.models.medical_doctor_availability import (
     MedicalDoctorAvailability
 )
@@ -16,7 +17,61 @@ from app.models.medical_appointment import (
 class DoctorAvailabilityService:
 
     # ==========================================================
-    # DISPONIBILIDAD DEL MÉDICO
+    # OBTENER UBICACIÓN DEL MÉDICO
+    # ==========================================================
+
+    @staticmethod
+    def get_doctor_location(
+        db: Session,
+        doctor_id: int,
+        consultation_type: str
+    ):
+        """
+        Obtiene la ubicación que corresponde a una disponibilidad.
+
+        PRESENCIAL:
+            1. Si existen latitude y longitude, se usan las coordenadas.
+            2. Si no existen coordenadas, se utiliza la dirección.
+
+        VIDEO:
+            No tiene ubicación.
+        """
+
+        if consultation_type == "video":
+            return None
+
+        doctor = db.query(
+            Doctor
+        ).filter(
+            Doctor.user_id == doctor_id
+        ).first()
+
+        if not doctor:
+            return None
+
+        # ------------------------------------------------------
+        # Si tiene coordenadas, son la ubicación principal
+        # ------------------------------------------------------
+
+        if doctor.latitude is not None and doctor.longitude is not None:
+            return {
+                "address": doctor.address,
+                "latitude": doctor.latitude,
+                "longitude": doctor.longitude,
+            }
+
+        # ------------------------------------------------------
+        # Si no tiene coordenadas, utilizar dirección
+        # ------------------------------------------------------
+
+        return {
+            "address": doctor.address,
+            "latitude": None,
+            "longitude": None,
+        }
+
+    # ==========================================================
+    # CREAR DISPONIBILIDAD
     # ==========================================================
 
     @staticmethod
@@ -29,9 +84,71 @@ class DoctorAvailabilityService:
         start_time: time = None,
         end_time: time = None,
         slot_duration: int = 30,
-        location: str = None,
         consultation_type: str = "presencial"
     ):
+
+        # ------------------------------------------------------
+        # Validar médico
+        # ------------------------------------------------------
+
+        doctor = db.query(
+            Doctor
+        ).filter(
+            Doctor.user_id == doctor_id,
+            Doctor.is_active == True
+        ).first()
+
+        if not doctor:
+            return None
+
+        # ------------------------------------------------------
+        # Validar tipo de consulta
+        # ------------------------------------------------------
+
+        if consultation_type not in [
+            "presencial",
+            "video"
+        ]:
+            raise ValueError(
+                "El tipo de consulta debe ser presencial o video"
+            )
+
+        # ------------------------------------------------------
+        # Validar ubicación para consulta presencial
+        # ------------------------------------------------------
+
+        if consultation_type == "presencial":
+
+            if (
+                doctor.latitude is None
+                and doctor.longitude is None
+                and not doctor.address
+            ):
+                raise ValueError(
+                    "El médico no tiene una dirección ni coordenadas "
+                    "registradas para consultas presenciales"
+                )
+
+        # ------------------------------------------------------
+        # Para video no guardamos dirección
+        # ------------------------------------------------------
+
+        location = None
+
+        if consultation_type == "presencial":
+
+            if (
+                doctor.latitude is not None
+                and doctor.longitude is not None
+            ):
+                location = doctor.address
+
+            else:
+                location = doctor.address
+
+        # ------------------------------------------------------
+        # Crear disponibilidad
+        # ------------------------------------------------------
 
         availability = MedicalDoctorAvailability(
             doctor_id=doctor_id,
@@ -53,6 +170,8 @@ class DoctorAvailabilityService:
         return availability
 
     # ==========================================================
+    # LISTAR DISPONIBILIDADES
+    # ==========================================================
 
     @staticmethod
     def get_doctor_availabilities(
@@ -70,6 +189,8 @@ class DoctorAvailabilityService:
             MedicalDoctorAvailability.start_time
         ).all()
 
+    # ==========================================================
+    # ELIMINAR DISPONIBILIDAD
     # ==========================================================
 
     @staticmethod
@@ -169,7 +290,7 @@ class DoctorAvailabilityService:
         day_of_week = appointment_date.weekday()
 
         # ------------------------------------------------------
-        # Buscar horarios normales del médico
+        # Buscar horarios normales
         # ------------------------------------------------------
 
         availabilities = db.query(
@@ -266,7 +387,6 @@ class DoctorAvailabilityService:
                         and exception.start_time
                         and exception.end_time
                     ):
-
                         if (
                             slot_start >= exception.start_time
                             and slot_start < exception.end_time
@@ -283,14 +403,64 @@ class DoctorAvailabilityService:
                     and slot_start not in occupied_times
                 ):
 
+                    # ------------------------------------------
+                    # Ubicación
+                    # ------------------------------------------
+
+                    location = (
+                        None
+                        if availability.consultation_type == "video"
+                        else self_get_location_from_doctor(
+                            db,
+                            doctor_id
+                        )
+                    )
+
                     slots.append({
                         "date": appointment_date,
                         "time": slot_start,
                         "available": True,
-                        "location": availability.address,
+                        "location": location,
                         "consultation_type": availability.consultation_type
                     })
 
                 current += duration
 
         return slots
+
+
+def self_get_location_from_doctor(
+    db: Session,
+    doctor_id: int
+):
+    """
+    Obtiene la ubicación actual del médico.
+
+    Se utiliza para que los slots no dependan de una
+    dirección antigua almacenada en la disponibilidad.
+    """
+
+    doctor = db.query(
+        Doctor
+    ).filter(
+        Doctor.user_id == doctor_id
+    ).first()
+
+    if not doctor:
+        return None
+
+    if (
+        doctor.latitude is not None
+        and doctor.longitude is not None
+    ):
+        return {
+            "address": doctor.address,
+            "latitude": doctor.latitude,
+            "longitude": doctor.longitude,
+        }
+
+    return {
+        "address": doctor.address,
+        "latitude": None,
+        "longitude": None,
+    }

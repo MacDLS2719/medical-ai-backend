@@ -48,6 +48,12 @@ class MedicalAppointment(Base):
         index=True
     )
 
+    consultation_type = Column(
+        String(20),
+        nullable=False,
+        default="presencial"
+    )
+
     location = Column(
         String(255),
         nullable=True

@@ -3,7 +3,6 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import nullslast
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -27,6 +26,7 @@ class AppointmentCreate(BaseModel):
     doctor_id: int
     appointment_date: date
     appointment_time: time
+    consultation_type: str
 
 
 class AppointmentStatusUpdate(BaseModel):
@@ -44,29 +44,112 @@ class AppointmentCancel(BaseModel):
 # CREAR CITA
 # ==========================================================
 
-@router.post(
-    ""
-)
+@router.post("")
 def create_appointment(
     data: AppointmentCreate,
     db: Session = Depends(get_db)
 ):
+
+    # ------------------------------------------------------
+    # Validar tipo de consulta
+    # ------------------------------------------------------
+
+    allowed_types = [
+        "presencial",
+        "video"
+    ]
+
+    if data.consultation_type not in allowed_types:
+        raise HTTPException(
+            status_code=400,
+            detail="Tipo de consulta inválido"
+        )
+
+    # ------------------------------------------------------
+    # Crear cita
+    # ------------------------------------------------------
 
     appointment = MedicalAppointmentService.create_appointment(
         db=db,
         patient_id=data.patient_id,
         doctor_id=data.doctor_id,
         appointment_date=data.appointment_date,
-        appointment_time=data.appointment_time
+        appointment_time=data.appointment_time,
+        consultation_type=data.consultation_type
     )
+
+    # ------------------------------------------------------
+    # Horario ocupado
+    # ------------------------------------------------------
 
     if not appointment:
         raise HTTPException(
             status_code=409,
-            detail="El horario seleccionado no está disponible"
+            detail="El horario seleccionado ya no está disponible"
         )
 
     return appointment
+
+
+# ==========================================================
+# CALENDARIO DEL MÉDICO
+# ==========================================================
+
+@router.get(
+    "/doctor/{doctor_id}/calendar"
+)
+def get_doctor_calendar(
+    doctor_id: int,
+    year: int,
+    month: int,
+    consultation_type: str,
+    db: Session = Depends(get_db)
+):
+
+    # ------------------------------------------------------
+    # Validar mes
+    # ------------------------------------------------------
+
+    if month < 1 or month > 12:
+        raise HTTPException(
+            status_code=400,
+            detail="Mes inválido"
+        )
+
+    # ------------------------------------------------------
+    # Validar tipo
+    # ------------------------------------------------------
+
+    allowed_types = [
+        "presencial",
+        "video"
+    ]
+
+    if consultation_type not in allowed_types:
+        raise HTTPException(
+            status_code=400,
+            detail="Tipo de consulta inválido"
+        )
+
+    # ------------------------------------------------------
+    # Obtener calendario
+    # ------------------------------------------------------
+
+    calendar = MedicalAppointmentService.get_doctor_calendar(
+        db=db,
+        doctor_id=doctor_id,
+        year=year,
+        month=month,
+        consultation_type=consultation_type
+    )
+
+    if calendar is None:
+        raise HTTPException(
+            status_code=400,
+            detail="No fue posible obtener el calendario"
+        )
+
+    return calendar
 
 
 # ==========================================================

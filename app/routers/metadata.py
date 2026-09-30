@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_db
 from app.models.specialty import Specialty
 
-router = APIRouter(prefix="/metadata", tags=["metadata"])
+router = APIRouter(prefix="/api/metadata", tags=["metadata"])
 
 
 @router.get("/specialties")

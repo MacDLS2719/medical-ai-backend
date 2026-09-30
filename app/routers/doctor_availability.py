@@ -7,8 +7,14 @@ from sqlalchemy import nullslast
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.models.medical_doctor_availability import MedicalDoctorAvailability
-from app.services.doctor_availability import DoctorAvailabilityService
+from app.models.doctor import Doctor
+from app.models.user import User
+from app.models.medical_doctor_availability import (
+    MedicalDoctorAvailability
+)
+from app.services.doctor_availability import (
+    DoctorAvailabilityService
+)
 
 
 router = APIRouter(
@@ -23,80 +29,174 @@ router = APIRouter(
 
 class AvailabilityCreate(BaseModel):
     doctor_id: int
+
     day_of_week: Optional[int] = None
+
     start_date: Optional[date] = None
+
     end_date: Optional[date] = None
+
     start_time: time
+
     end_time: time
+
     slot_duration: int = 30
-    location: Optional[str] = None
+
     consultation_type: str = "presencial"
 
 
 class ExceptionCreate(BaseModel):
     doctor_id: int
+
     exception_date: date
+
     type: str = "unavailable"
+
     start_time: Optional[time] = None
+
     end_time: Optional[time] = None
+
     reason: Optional[str] = None
+
     consultation_type: Optional[str] = None
 
 
 # ==========================================================
-# DISPONIBILIDAD DEL MÉDICO
+# CREAR DISPONIBILIDAD
 # ==========================================================
 
-@router.post(
-    ""
-)
+@router.post("")
 def create_availability(
     data: AvailabilityCreate,
     db: Session = Depends(get_db)
 ):
 
-    if data.day_of_week is not None and (data.day_of_week < 0 or data.day_of_week > 6):
+    # ------------------------------------------------------
+    # Validar día
+    # ------------------------------------------------------
+
+    if (
+        data.day_of_week is not None
+        and (
+            data.day_of_week < 0
+            or data.day_of_week > 6
+        )
+    ):
         raise HTTPException(
             status_code=400,
             detail="day_of_week debe estar entre 0 y 6"
         )
 
-    if data.start_date and data.end_date and data.start_date > data.end_date:
+    # ------------------------------------------------------
+    # Validar fechas
+    # ------------------------------------------------------
+
+    if (
+        data.start_date
+        and data.end_date
+        and data.start_date > data.end_date
+    ):
         raise HTTPException(
             status_code=400,
-            detail="La fecha de inicio debe ser menor o igual a la fecha de fin"
+            detail=(
+                "La fecha de inicio debe ser menor "
+                "o igual a la fecha de fin"
+            )
         )
 
-    if data.day_of_week is None and (data.start_date is None or data.end_date is None):
+    # ------------------------------------------------------
+    # Validar día o rango
+    # ------------------------------------------------------
+
+    if (
+        data.day_of_week is None
+        and (
+            data.start_date is None
+            or data.end_date is None
+        )
+    ):
         raise HTTPException(
             status_code=400,
-            detail="Debe especificar day_of_week o un rango de fechas (start_date, end_date)"
+            detail=(
+                "Debe especificar day_of_week o "
+                "un rango de fechas "
+                "(start_date, end_date)"
+            )
         )
+
+    # ------------------------------------------------------
+    # Validar horas
+    # ------------------------------------------------------
 
     if data.start_time >= data.end_time:
         raise HTTPException(
             status_code=400,
-            detail="La hora de inicio debe ser menor que la hora de finalización"
+            detail=(
+                "La hora de inicio debe ser menor "
+                "que la hora de finalización"
+            )
         )
+
+    # ------------------------------------------------------
+    # Validar duración
+    # ------------------------------------------------------
 
     if data.slot_duration <= 0:
         raise HTTPException(
             status_code=400,
-            detail="La duración del turno debe ser mayor que 0"
+            detail=(
+                "La duración del turno "
+                "debe ser mayor que 0"
+            )
         )
 
-    availability = DoctorAvailabilityService.create_availability(
-        db=db,
-        doctor_id=data.doctor_id,
-        day_of_week=data.day_of_week,
-        start_date=data.start_date,
-        end_date=data.end_date,
-        start_time=data.start_time,
-        end_time=data.end_time,
-        slot_duration=data.slot_duration,
-        location=data.location,
-        consultation_type=data.consultation_type
-    )
+    # ------------------------------------------------------
+    # Validar tipo de consulta
+    # ------------------------------------------------------
+
+    if data.consultation_type not in [
+        "presencial",
+        "video"
+    ]:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "consultation_type debe ser "
+                "'presencial' o 'video'"
+            )
+        )
+
+    # ------------------------------------------------------
+    # Crear disponibilidad
+    # ------------------------------------------------------
+
+    try:
+
+        availability = DoctorAvailabilityService.create_availability(
+            db=db,
+            doctor_id=data.doctor_id,
+            day_of_week=data.day_of_week,
+            start_date=data.start_date,
+            end_date=data.end_date,
+            start_time=data.start_time,
+            end_time=data.end_time,
+            slot_duration=data.slot_duration,
+            consultation_type=data.consultation_type
+        )
+
+    except ValueError as e:
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
+
+    if not availability:
+
+        raise HTTPException(
+            status_code=404,
+            detail="Médico no encontrado o inactivo"
+        )
 
     return availability
 
@@ -105,56 +205,112 @@ def create_availability(
 # LISTAR MÉDICOS CON DISPONIBILIDAD
 # ==========================================================
 
-@router.get(
-    "/doctors"
-)
+@router.get("/doctors")
 def get_doctors_with_availability(
     db: Session = Depends(get_db)
 ):
-    from app.models.doctor import Doctor
-    from app.models.user import User
 
-    doctors = db.query(Doctor).join(
-        User, Doctor.user_id == User.id
+    doctors = db.query(
+        Doctor
+    ).join(
+        User,
+        Doctor.user_id == User.id
     ).filter(
         Doctor.is_active == True,
         User.is_active == True
-    ).order_by(Doctor.first_name).all()
+    ).order_by(
+        Doctor.first_name
+    ).all()
 
     result = []
+
     for doctor in doctors:
+
         availabilities = db.query(
             MedicalDoctorAvailability
         ).filter(
             MedicalDoctorAvailability.doctor_id == doctor.user_id,
             MedicalDoctorAvailability.is_active == True
         ).order_by(
-            nullslast(MedicalDoctorAvailability.start_date),
-            nullslast(MedicalDoctorAvailability.day_of_week),
+            nullslast(
+                MedicalDoctorAvailability.start_date
+            ),
+            nullslast(
+                MedicalDoctorAvailability.day_of_week
+            ),
             MedicalDoctorAvailability.start_time
         ).all()
 
         avail_list = []
+
         for a in availabilities:
+
+            # --------------------------------------------------
+            # Obtener ubicación actual del médico
+            # --------------------------------------------------
+
+            location = (
+                DoctorAvailabilityService.get_doctor_location(
+                    db,
+                    doctor.user_id,
+                    a.consultation_type
+                )
+            )
+
             avail_list.append({
                 "id": a.id,
+
                 "day_of_week": a.day_of_week,
-                "start_date": str(a.start_date) if a.start_date else None,
-                "end_date": str(a.end_date) if a.end_date else None,
-                "start_time": str(a.start_time)[:5] if a.start_time else None,
-                "end_time": str(a.end_time)[:5] if a.end_time else None,
+
+                "start_date": (
+                    str(a.start_date)
+                    if a.start_date
+                    else None
+                ),
+
+                "end_date": (
+                    str(a.end_date)
+                    if a.end_date
+                    else None
+                ),
+
+                "start_time": (
+                    str(a.start_time)[:5]
+                    if a.start_time
+                    else None
+                ),
+
+                "end_time": (
+                    str(a.end_time)[:5]
+                    if a.end_time
+                    else None
+                ),
+
                 "slot_duration": a.slot_duration,
-                "consultation_type": a.consultation_type,
+
+                "consultation_type": (
+                    a.consultation_type
+                ),
+
+                "location": location,
             })
 
         result.append({
+
             "user_id": doctor.user_id,
+
             "first_name": doctor.first_name,
+
             "last_name": doctor.last_name,
+
             "specialty": doctor.specialty,
+
             "latitude": doctor.latitude,
+
             "longitude": doctor.longitude,
+
             "address": doctor.address,
+
             "availabilities": avail_list,
         })
 
@@ -162,10 +318,10 @@ def get_doctors_with_availability(
 
 
 # ==========================================================
+# OBTENER DISPONIBILIDADES DEL MÉDICO
+# ==========================================================
 
-@router.get(
-    "/{doctor_id}"
-)
+@router.get("/{doctor_id}")
 def get_doctor_availability(
     doctor_id: int,
     db: Session = Depends(get_db)
@@ -178,10 +334,10 @@ def get_doctor_availability(
 
 
 # ==========================================================
+# ELIMINAR DISPONIBILIDAD
+# ==========================================================
 
-@router.delete(
-    "/{availability_id}"
-)
+@router.delete("/{availability_id}")
 def delete_availability(
     availability_id: int,
     doctor_id: int,
@@ -195,6 +351,7 @@ def delete_availability(
     )
 
     if not availability:
+
         raise HTTPException(
             status_code=404,
             detail="Disponibilidad no encontrada"
@@ -206,12 +363,10 @@ def delete_availability(
 
 
 # ==========================================================
-# EXCEPCIONES
+# CREAR EXCEPCIÓN
 # ==========================================================
 
-@router.post(
-    "/exceptions"
-)
+@router.post("/exceptions")
 def create_exception(
     data: ExceptionCreate,
     db: Session = Depends(get_db)
@@ -221,6 +376,7 @@ def create_exception(
         "unavailable",
         "custom"
     ]:
+
         raise HTTPException(
             status_code=400,
             detail="Tipo de excepción inválido"
@@ -228,17 +384,44 @@ def create_exception(
 
     if data.type == "custom":
 
-        if not data.start_time or not data.end_time:
+        if (
+            not data.start_time
+            or not data.end_time
+        ):
+
             raise HTTPException(
                 status_code=400,
-                detail="Las excepciones custom requieren start_time y end_time"
+                detail=(
+                    "Las excepciones custom requieren "
+                    "start_time y end_time"
+                )
             )
 
         if data.start_time >= data.end_time:
+
             raise HTTPException(
                 status_code=400,
-                detail="La hora de inicio debe ser menor que la hora final"
+                detail=(
+                    "La hora de inicio debe ser menor "
+                    "que la hora final"
+                )
             )
+
+    if (
+        data.consultation_type is not None
+        and data.consultation_type not in [
+            "presencial",
+            "video"
+        ]
+    ):
+
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "consultation_type debe ser "
+                "'presencial' o 'video'"
+            )
+        )
 
     exception = DoctorAvailabilityService.create_exception(
         db=db,
@@ -255,10 +438,10 @@ def create_exception(
 
 
 # ==========================================================
+# OBTENER EXCEPCIONES
+# ==========================================================
 
-@router.get(
-    "/{doctor_id}/exceptions"
-)
+@router.get("/{doctor_id}/exceptions")
 def get_exceptions(
     doctor_id: int,
     exception_date: Optional[date] = None,
@@ -276,9 +459,7 @@ def get_exceptions(
 # HORARIOS DISPONIBLES
 # ==========================================================
 
-@router.get(
-    "/available-slots/{doctor_id}"
-)
+@router.get("/available-slots/{doctor_id}")
 def get_available_slots(
     doctor_id: int,
     appointment_date: date,

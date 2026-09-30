@@ -285,5 +285,46 @@ class PaddleService:
             received_signature,
         )
 
+    # ==========================================================
+    # TEST DE CONEXIÓN
+    # ==========================================================
+
+    async def test_connection(self) -> dict:
+        """
+        Prueba la conexión con Paddle Sandbox.
+
+        No crea ni modifica ningún recurso.
+        """
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.base_url}/prices",
+                headers=self.headers,
+                params={
+                    "per_page": 5,
+                },
+                timeout=30,
+            )
+
+        if response.is_error:
+            try:
+                error_data = response.json()
+            except Exception:
+                error_data = response.text
+
+            raise RuntimeError(
+                f"Paddle respondió HTTP {response.status_code}: "
+                f"{error_data}"
+            )
+
+        data = response.json()
+
+        return {
+            "status_code": response.status_code,
+            "prices_found": len(data.get("data", [])),
+            "request_id": data.get("meta", {}).get("request_id"),
+            "response": data,
+        }
+
 
 paddle_service = PaddleService()
