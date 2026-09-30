@@ -2,10 +2,11 @@ from app.models.user import User
 from app.models.doctor import Doctor
 from app.models.patient import Patient
 
+from app.models.doctor_bank_account import DoctorBankAccount
+from app.models.doctor_billing_profile import DoctorBillingProfile
+from app.models.doctor_payment_setting import DoctorPaymentSetting
 from app.models.specialty import Specialty
 from app.models.doctor_specialty import DoctorSpecialty
-
-
 
 from app.models.medical_source import MedicalSource
 from app.models.medical_document import MedicalDocument
@@ -31,7 +32,8 @@ from app.models.doctor_media import DoctorMedia
 from app.models.doctor_review import DoctorReview
 
 from app.models.medical_message_attachment import MedicalMessageAttachment
-
+from app.models.external_health_places import ExternalHealthPlace
+from app.models.health_place_search_zones import HealthPlaceSearchZone
 
 from app.models.paddle_customer import PaddleCustomer
 from app.models.subscription_plan import SubscriptionPlan
@@ -48,6 +50,9 @@ __all__ = [
     "User",
     "Doctor",
     "Patient",
+    "DoctorBankAccount",
+    "DoctorBillingProfile",
+    "DoctorPaymentSetting",
 
     "Specialty",
     "DoctorSpecialty",
@@ -68,11 +73,13 @@ __all__ = [
     "MedicalMessageNotification",
     "MedicalNotification",
     "MedicalMessageAttachment",
+    "MedicalVerification",
+    "ExternalHealthPlace",
+    "HealthPlaceSearchZone",
 
     "DoctorEducation",
     "DoctorMedia",
     "DoctorReview",
-
 
     "PaddleCustomer",
     "SubscriptionPlan",

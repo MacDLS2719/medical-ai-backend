@@ -281,6 +281,17 @@ class Doctor(Base):
     )
 
     # ==========================================================
+    # FACTURACIÓN
+    # ==========================================================
+
+    billing_profile: Mapped["DoctorBillingProfile | None"] = relationship(
+        "DoctorBillingProfile",
+        back_populates="doctor",
+        uselist=False,
+        cascade="all, delete-orphan"
+    )
+
+    # ==========================================================
     # ESPECIALIDADES
     # ==========================================================
 

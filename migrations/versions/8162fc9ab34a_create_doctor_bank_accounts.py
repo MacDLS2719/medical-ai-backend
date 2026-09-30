@@ -1,8 +1,8 @@
-"""create doctor payment settings
+"""create doctor bank accounts
 
-Revision ID: 99cde91189d3
-Revises: c2a49e17d0b6
-Create Date: 2026-09-30 10:05:38.298406
+Revision ID: <REVISION_GENERADA>
+Revises: 99cde91189d3
+Create Date: 2026-09-30
 
 """
 
@@ -13,15 +13,15 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = "99cde91189d3"
-down_revision: Union[str, Sequence[str], None] = "c2a49e17d0b6"
+revision: str = "<REVISION_GENERADA>"
+down_revision: Union[str, Sequence[str], None] = "99cde91189d3"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
     op.create_table(
-        "doctor_payment_settings",
+        "doctor_bank_accounts",
 
         sa.Column(
             "id",
@@ -38,14 +38,32 @@ def upgrade() -> None:
         ),
 
         sa.Column(
-            "consultation_type",
+            "account_holder",
+            sa.String(255),
+            nullable=False,
+        ),
+
+        sa.Column(
+            "bank_name",
+            sa.String(100),
+            nullable=False,
+        ),
+
+        sa.Column(
+            "account_type",
             sa.String(50),
             nullable=False,
         ),
 
         sa.Column(
-            "price",
-            sa.Integer(),
+            "account_number",
+            sa.String(100),
+            nullable=False,
+        ),
+
+        sa.Column(
+            "country",
+            sa.String(100),
             nullable=False,
         ),
 
@@ -53,6 +71,13 @@ def upgrade() -> None:
             "currency",
             sa.String(10),
             nullable=False,
+        ),
+
+        sa.Column(
+            "is_verified",
+            sa.Boolean(),
+            nullable=False,
+            server_default=sa.text("false"),
         ),
 
         sa.Column(
@@ -81,27 +106,21 @@ def upgrade() -> None:
             ["users.id"],
             ondelete="CASCADE",
         ),
-
-        sa.UniqueConstraint(
-            "doctor_id",
-            "consultation_type",
-            name="uq_doctor_payment_settings_type",
-        ),
     )
 
     op.create_index(
-        "ix_doctor_payment_settings_doctor_id",
-        "doctor_payment_settings",
+        "ix_doctor_bank_accounts_doctor_id",
+        "doctor_bank_accounts",
         ["doctor_id"],
     )
 
 
 def downgrade() -> None:
     op.drop_index(
-        "ix_doctor_payment_settings_doctor_id",
-        table_name="doctor_payment_settings",
+        "ix_doctor_bank_accounts_doctor_id",
+        table_name="doctor_bank_accounts",
     )
 
     op.drop_table(
-        "doctor_payment_settings"
+        "doctor_bank_accounts",
     )

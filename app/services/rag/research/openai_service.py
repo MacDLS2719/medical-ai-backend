@@ -81,7 +81,8 @@ IMPORTANTE:
 3. MÍNIMO DE REFERENCIAS REALES Y CON CONTENIDO: Proporciona al menos 15 referencias médicas de alta calidad. SOLO INCLUYE ARTÍCULOS SI ESTÁS 100% SEGURO DE QUE EL ENLACE FUNCIONA, EL TÍTULO ES EXACTO, Y EL ARTÍCULO TIENE UN ABSTRACT (RESUMEN) O TEXTO COMPLETO PÚBLICAMENTE DISPONIBLE. No incluyas enlaces a páginas vacías o donde no se pueda leer nada del contenido.
 4. ENLACES VARIADOS Y EXACTOS: No uses solo PubMed. Usa enlaces directos a las revistas y organizaciones (WHO, CDC, NEJM, Lancet, Nature, etc.) en el campo "url". EL TÍTULO DEL ARTÍCULO DEBE COINCIDIR EXACTAMENTE CON EL ARTÍCULO QUE SE ABRE EN EL ENLACE. No pongas un título falso para un enlace real que lleva a otro tema.
 5. FUENTES VERIFICADAS: Si la fuente proviene de las principales revistas médicas o bases científicas de primer nivel (NEJM, Lancet, JAMA, BMJ, Nature, PubMed, NIH, Europe PMC, WHO, CDC), clasifícala como verificada (verified: true). Si viene de otros repositorios, márcalas como (verified: false).
-6. CERO ALUCINACIONES EN ENLACES: NO INVENTES PMIDs, DOIs NI URLs. Si no tienes certeza absoluta del identificador real de un artículo y su título exacto, omítelo por completo. ¡Prohibido generar identificadores al azar!
+8. CERO ALUCINACIONES EN ENLACES: NO INVENTES PMIDs, DOIs NI URLs. Si no tienes certeza absoluta del identificador real de un artículo y su título exacto, omítelo por completo. ¡Prohibido generar identificadores al azar!
+9. IDIOMA DE RESPUESTA: Responde y redacta el resumen íntegramente en el MISMO IDIOMA en el que el usuario formuló su pregunta.
 
 FORMATO JSON OBLIGATORIO:
 {
@@ -129,10 +130,12 @@ IMPORTANTE — MODO UNIVERSITARIO:
 4. ENLACES VARIADOS Y EXACTOS: Usa los enlaces directos a los repositorios o centros. EL TÍTULO DEL ARTÍCULO DEBE COINCIDIR EXACTAMENTE CON EL ENLACE QUE SE ABRE. No inventes títulos para enlaces que van a otros documentos.
 5. CLASIFICACIÓN: verified: false para todo (son fuentes académicas no clínicas peer-reviewed de primer nivel). Excepción: si aparece un artículo de revista top, verified: true.
 6. CERO ALUCINACIONES: NO inventes PMIDs, DOIs ni URLs. Si no conoces el enlace exacto, omite ese campo.
+7. SÍNTESIS EXTENSA: El resumen académico debe ser considerablemente MÁS LARGO, detallado y estructurado como una síntesis de nivel universitario (tipo ensayo o artículo de revisión).
+8. IDIOMA DE RESPUESTA: Responde y redacta la síntesis íntegramente en el MISMO IDIOMA en el que el usuario formuló su consulta.
 
 FORMATO JSON OBLIGATORIO:
 {{
-    "summary": "Análisis académico exhaustivo enfocado en investigación universitaria y de centros de investigación. Incluye citas [1], [2]...",
+    "summary": "Síntesis académica muy extensa, profunda y detallada (tipo revisión bibliográfica), enfocada en investigación universitaria. Incluye citas [1], [2]...",
     "references": [
         {{
             "title": "Título EXACTO del artículo que se abre en el enlace",

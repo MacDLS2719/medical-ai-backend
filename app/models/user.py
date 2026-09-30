@@ -98,6 +98,18 @@ class User(Base):
         cascade="all, delete-orphan"
     )
 
+    bank_accounts: Mapped[list["DoctorBankAccount"]] = relationship(
+        "DoctorBankAccount",
+        back_populates="doctor",
+        cascade="all, delete-orphan"
+    )
+
+    payment_settings: Mapped[list["DoctorPaymentSetting"]] = relationship(
+        "DoctorPaymentSetting",
+        back_populates="doctor",
+        cascade="all, delete-orphan"
+    )
+
     medical_queries: Mapped[list["MedicalQuery"]] = relationship(
         "MedicalQuery",
         back_populates="user",

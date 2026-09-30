@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_db
@@ -21,11 +21,13 @@ router = APIRouter(
 class AdvancedSearchRequest(BaseModel):
     query: str
     max_results_per_source: int = 2
+    existing_references: list[dict] = Field(default_factory=list)
 
 
 class AdvancedSearchResponse(BaseModel):
     summary: str
     references: list[dict]
+    sources: dict[str, dict[str, int | str]] = Field(default_factory=dict)
 
 
 class UsageResponse(BaseModel):
@@ -85,8 +87,13 @@ async def advanced_search(
 
         summary = result.get("summary", "") if isinstance(result, dict) else str(result)
         references = result.get("references", []) if isinstance(result, dict) else []
+        sources = result.get("sources", {}) if isinstance(result, dict) else {}
 
-        return AdvancedSearchResponse(summary=summary, references=references)
+        return AdvancedSearchResponse(
+            summary=summary,
+            references=references,
+            sources=sources,
+        )
 
     except HTTPException:
         raise
@@ -121,6 +128,7 @@ async def university_search(
         result = await medical_search_service.university_research_search(
             query=request.query,
             max_results_per_source=request.max_results_per_source,
+            existing_references=request.existing_references,
         )
 
         usage.search_count += 1
@@ -128,8 +136,13 @@ async def university_search(
 
         summary = result.get("summary", "") if isinstance(result, dict) else str(result)
         references = result.get("references", []) if isinstance(result, dict) else []
+        sources = result.get("sources", {}) if isinstance(result, dict) else {}
 
-        return AdvancedSearchResponse(summary=summary, references=references)
+        return AdvancedSearchResponse(
+            summary=summary,
+            references=references,
+            sources=sources,
+        )
 
     except HTTPException:
         raise
