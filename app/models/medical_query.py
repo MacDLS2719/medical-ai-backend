@@ -56,11 +56,6 @@ class MedicalQuery(Base):
         back_populates="medical_queries"
     )
 
-    query_pathologies = relationship(
-        "MedicalQueryPathology",
-        back_populates="query",
-        cascade="all, delete-orphan"
-    )
 
     query_sources = relationship(
         "MedicalQuerySource",

@@ -72,9 +72,11 @@ class User(Base):
         cascade="all, delete-orphan"
     )
 
-    medical_queries = relationship(
-        "MedicalQuery",
-        back_populates="user"
+    patient_location: Mapped["PatientLocation | None"] = relationship(
+        "PatientLocation",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan"
     )
 
     paddle_customer: Mapped["PaddleCustomer | None"] = relationship(
@@ -92,6 +94,12 @@ class User(Base):
 
     payments: Mapped[list["Payment"]] = relationship(
         "Payment",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
+
+    medical_queries: Mapped[list["MedicalQuery"]] = relationship(
+        "MedicalQuery",
         back_populates="user",
         cascade="all, delete-orphan"
     )

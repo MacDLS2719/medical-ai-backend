@@ -5,13 +5,12 @@ from app.models.patient import Patient
 from app.models.specialty import Specialty
 from app.models.doctor_specialty import DoctorSpecialty
 
-from app.models.pathology import Pathology
-from app.models.patient_pathology import PatientPathology
+
 
 from app.models.medical_source import MedicalSource
 from app.models.medical_document import MedicalDocument
 from app.models.medical_query import MedicalQuery
-from app.models.medical_query_pathology import MedicalQueryPathology
+
 from app.models.medical_query_source import MedicalQuerySource
 from app.models.medical_response import MedicalResponse
 
@@ -40,6 +39,11 @@ from app.models.subscription import Subscription
 from app.models.payment import Payment
 from app.models.paddle_webhook_event import PaddleWebhookEvent
 
+from app.models.doctor_subscription import DoctorSubscription
+from app.models.payment_doctor import PaymentDoctor
+from app.models.medical_search_usage import MedicalSearchUsage
+from app.models.patient_location import PatientLocation
+
 __all__ = [
     "User",
     "Doctor",
@@ -47,13 +51,10 @@ __all__ = [
 
     "Specialty",
     "DoctorSpecialty",
-    "Pathology",
-    "PatientPathology",
-
     "MedicalSource",
     "MedicalDocument",
     "MedicalQuery",
-    "MedicalQueryPathology",
+
     "MedicalQuerySource",
     "MedicalResponse",
 
@@ -78,4 +79,8 @@ __all__ = [
     "Subscription",
     "Payment",
     "PaddleWebhookEvent",
+    "DoctorSubscription",
+    "PaymentDoctor",
+    "MedicalSearchUsage",
+    "PatientLocation",
 ]

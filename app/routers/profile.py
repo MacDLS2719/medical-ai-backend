@@ -25,13 +25,14 @@ def get_profile(
             profile_data.update({
                 "first_name": patient.first_name,
                 "last_name": patient.last_name,
-                "document_number": patient.document_number,
                 "gender": patient.gender,
                 "birth_date": patient.birth_date,
-                "address": patient.address,
-                "latitude": patient.latitude,
-                "longitude": patient.longitude,
             })
+            if current_user.patient_location:
+                profile_data.update({
+                    "latitude": current_user.patient_location.latitude,
+                    "longitude": current_user.patient_location.longitude,
+                })
     elif current_user.role == "doctor":
         raise HTTPException(status_code=403, detail="Doctors must use /api/doctor-profile endpoint")
     elif current_user.role == "verifier":
