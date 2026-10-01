@@ -23,6 +23,7 @@ from app.schemas.medical_conversation import (
     MessageResponse,
     NotificationResponse,
 )
+from app.models.medical_message import MedicalMessage
 
 from app.services.medical_conversation_service import (
     MedicalConversationService,
@@ -33,6 +34,10 @@ from app.services.cloudinary_service import cloudinary_service
 from app.services.daily_service import (
     create_daily_room,
     delete_daily_room,
+)
+
+from app.services.call_transcription_service import (
+    CallTranscriptionPipeline,
 )
 
 from app.routers.websockets import manager as ws_manager
@@ -695,6 +700,61 @@ async def send_audio_message(
     )
 
     return message
+
+
+# ==========================================================
+# PROCESAR GRABACIÓN DE VIDEOLLAMADA
+# ==========================================================
+
+@router.post(
+    "/conversations/{conversation_id}/video-call/process-recording"
+)
+async def process_video_call_recording(
+    conversation_id: int,
+    sender_id: int = Query(...),
+    audio_url: Optional[str] = Form(None),
+    audio_file: Optional[UploadFile] = File(None),
+    db: Session = Depends(get_db),
+):
+    try:
+        result = await CallTranscriptionPipeline.process_call_recording(
+            db=db,
+            conversation_id=conversation_id,
+            sender_id=sender_id,
+            audio_url=audio_url,
+            audio_file=audio_file,
+        )
+
+        message_ids = [result["message_id"]]
+        if result.get("document_message_id"):
+            message_ids.append(result["document_message_id"])
+
+        for message_id in message_ids:
+            message = db.query(MedicalMessage).filter(
+                MedicalMessage.id == message_id
+            ).first()
+            if message:
+                payload = {
+                    "action": "new_message",
+                    "message": MessageResponse.model_validate(message).model_dump(mode="json"),
+                }
+                for user_id in {message.sender_id, message.receiver_id}:
+                    await ws_manager.send_personal_message(payload, user_id)
+
+                if result.get("status") == "transcription_failed":
+                    raise HTTPException(status_code=422, detail=result["error"])
+
+        return {
+            "status": "ok",
+            "data": result,
+        }
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.error(f"Error procesando grabación de videollamada: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error procesando grabación: {exc}")
 
 
 # ==========================================================

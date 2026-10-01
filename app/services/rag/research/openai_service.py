@@ -1,10 +1,10 @@
-import os
 import json
 import asyncio
 import urllib.parse
 from typing import Any
 import aiohttp
 from openai import AsyncOpenAI
+from app.core.config import settings
 
 # ============================================================
 # MAPEO DE NOMBRES
@@ -166,9 +166,9 @@ Incluye el nombre de la universidad o centro en el campo "source".
 # ============================================================
 class OpenAIService:
     def __init__(self):
-        api_key = os.getenv("OPENAI_API_KEY")
+        api_key = settings.OPENAI_API_KEY
         self.client = AsyncOpenAI(api_key=api_key) if api_key else None
-        self.model = os.getenv("OPENAI_MODEL", "gpt-4o")
+        self.model = settings.OPENAI_MODEL
 
     async def _spot_check_url(self, session: aiohttp.ClientSession, url: str, allow_403: bool = True) -> tuple[bool, str]:
         if not url or not url.startswith("http"):

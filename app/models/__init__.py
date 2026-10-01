@@ -24,6 +24,7 @@ from app.models.medical_conversation import MedicalConversation
 from app.models.medical_message import MedicalMessage
 from app.models.medical_message_notification import MedicalMessageNotification
 from app.models.medical_notification import MedicalNotification
+from app.models.medical_alert_result import MedicalAlertResult
 from app.models.medical_video_call import MedicalVideoCall
 from app.models.medical_verification import MedicalVerification
 
@@ -72,6 +73,7 @@ __all__ = [
     "MedicalMessage",
     "MedicalMessageNotification",
     "MedicalNotification",
+    "MedicalAlertResult",
     "MedicalMessageAttachment",
     "MedicalVerification",
     "ExternalHealthPlace",

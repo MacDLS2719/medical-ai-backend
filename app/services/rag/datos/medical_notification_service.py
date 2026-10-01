@@ -275,9 +275,17 @@ class MedicalNotificationService:
     # ==========================================================
 
     def count_unread(self, user_id: int) -> int:
-        # Como las alertas médicas actuales no tienen un estado de lectura,
-        # devolvemos 0 para evitar errores en la interfaz.
-        return 0
+        from app.models.medical_alert_result import MedicalAlertResult
+        
+        statement = select(MedicalAlertResult).join(
+            MedicalNotification, MedicalAlertResult.alert_id == MedicalNotification.id
+        ).where(
+            MedicalNotification.user_id == user_id,
+            MedicalAlertResult.is_read == False
+        )
+        
+        results = self.db.execute(statement).scalars().all()
+        return len(results)
 
     def mark_as_read(self, notification_id: int, user_id: int) -> Optional[MedicalNotification]:
         return self.get_notification(notification_id=notification_id, user_id=user_id)

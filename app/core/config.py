@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     # Deepgram — transcripción de audio a texto
     DEEPGRAM: str = ""
 
+    # OpenAI — generación de resúmenes y otras tareas de IA
+    OPENAI_API_KEY: str = ""
+    OPENAI_MODEL: str = "gpt-4o"
+
     # ------------------------------------------------------------------
     # Paddle — pagos y suscripciones
     # ------------------------------------------------------------------

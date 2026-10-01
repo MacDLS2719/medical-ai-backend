@@ -43,4 +43,4 @@ async def delete_daily_room(room_name: str):
         "Authorization": f"Bearer {DAILY_API_KEY}"
     }
     async with httpx.AsyncClient() as client:
-        await client.delete(f"{DAILY_API_URL}/rooms/{room_name}", headers=headers)
+        await client.delete(f"{DAILY_API_URL}/rooms/{room_name}", headers=headers)

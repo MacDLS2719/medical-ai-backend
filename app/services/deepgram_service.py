@@ -14,11 +14,14 @@ Endpoint:
 Retorna el texto transcrito o cadena vacía si falla.
 """
 
+import logging
+
 import httpx
 from app.core.config import settings
 
 
 DEEPGRAM_URL = "https://api.deepgram.com/v1/listen"
+logger = logging.getLogger(__name__)
 
 
 async def transcribe_audio(audio_bytes: bytes, content_type: str = "audio/webm") -> str:
@@ -78,12 +81,20 @@ async def transcribe_audio(audio_bytes: bytes, content_type: str = "audio/webm")
             or ""
         )
 
-        print(f"[Deepgram] Transcripción: {transcript!r}")
-        return transcript.strip()
+        transcript = transcript.strip()
+        if not transcript:
+            metadata = data.get("metadata", {})
+            logger.warning(
+                "Deepgram returned an empty transcript (audio_bytes=%s, duration=%s, request_id=%s)",
+                len(audio_bytes),
+                metadata.get("duration"),
+                metadata.get("request_id"),
+            )
+        return transcript
 
     except httpx.HTTPStatusError as exc:
-        print(f"[Deepgram] HTTP error {exc.response.status_code}: {exc.response.text}")
+        logger.error("Deepgram HTTP error %s: %s", exc.response.status_code, exc.response.text)
         raise
     except Exception as exc:
-        print(f"[Deepgram] Error inesperado: {exc}")
+        logger.exception("Deepgram transcription failed: %s", exc)
         raise

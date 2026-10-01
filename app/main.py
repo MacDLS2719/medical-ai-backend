@@ -14,6 +14,7 @@ from app.routers import (
     doctor_availability,
     doctor_reviews,
     doctor_profile,
+    doctor_payments,
     medical_alerts,
     websockets,
     doctor_verification,
@@ -94,6 +95,11 @@ app.include_router(
 )
 
 app.include_router(
+    doctor_payments.router,
+    prefix="/api/doctor-payments"
+)
+
+app.include_router(
     medical_conversations.router,
     prefix="/api"
 )
@@ -138,6 +144,12 @@ app.include_router(
 app.include_router(
     health_places.router,
 )
+
+from app.core.alert_scheduler import start_scheduler
+
+@app.on_event("startup")
+async def startup_event():
+    start_scheduler()
 
 
 @app.get("/")
