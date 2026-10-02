@@ -55,8 +55,12 @@ class AlertSearchService:
         """
         Procesa la alerta garantizando exactamente 10 referencias con títulos reales y DOIs verificados.
         """
+        # information_type puede ser CSV cuando el usuario eligió varios tipos
+        info_types = [t.strip() for t in alert.information_type.split(',') if t.strip()]
+        info_type_str = ' y '.join(info_types) if info_types else alert.information_type
+
         query = (
-            f"Nuevos avances sobre {alert.medical_topic} enfocados en {alert.information_type}. "
+            f"Nuevos avances sobre {alert.medical_topic} enfocados en {info_type_str}. "
             f"Proporciona estrictamente un listado de 10 fuentes bibliográficas reales y contrastadas. "
             f"REGLA OBLIGATORIA: Cada artículo debe ser real, con su título oficial exacto y su enlace DOI real y verificado (https://doi.org/...)."
         )
