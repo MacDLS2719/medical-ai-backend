@@ -21,6 +21,7 @@ from app.routers import (
     transcribe,
     medical_agent,
     paddle,
+    stripe,
     advanced_search,
     health_places,
     support_ai,
@@ -136,6 +137,10 @@ app.include_router(
 
 app.include_router(
     paddle.router,
+)
+
+app.include_router(
+    stripe.router,
 )
 
 app.include_router(

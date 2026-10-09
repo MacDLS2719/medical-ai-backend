@@ -52,14 +52,24 @@ class Settings(BaseSettings):
 
     # Price ID del plan profesional (pri_xxx)
     PADDLE_DOCTOR_PRICE_ID: str = ""
-
-    # Client token público para inicializar Paddle.js en el frontend
-    # Se obtiene en Paddle Dashboard → Developer Tools → Client-side tokens
-    # Mientras no se tenga, usar la misma API Key como placeholder
     PADDLE_CLIENT_TOKEN: str = ""
 
     # "sandbox" | "production"
-    PADDLE_ENVIRONMENT: str = "sandbox"
+    PADDLE_ENVIRONMENT: str = "production"
+
+    # ------------------------------------------------------------------
+    # Stripe — pagos y suscripciones
+    # ------------------------------------------------------------------
+    STRIPE_SECRET_KEY: str = ""
+    STRIPE_WEBHOOK_SECRET: str = ""
+    STRIPE_DOCTOR_PRICE_ID: str = ""
+    STRIPE_PUBLISHABLE_KEY: str = ""
+    STRIPE_CONNECT_CLIENT_ID: str = ""
+
+    # ------------------------------------------------------------------
+    # Frontend — URL base del frontend (para redirect de Stripe)
+    # ------------------------------------------------------------------
+    FRONTEND_URL: str = "http://localhost:5173"
 
     @computed_field
     @property

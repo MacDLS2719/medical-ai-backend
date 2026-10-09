@@ -66,6 +66,17 @@ class StripeService:
             customer_id
         )
 
+    def list_customers_by_email(
+        self,
+        email: str,
+    ) -> list:
+        """
+        Busca customers en Stripe por email.
+        Retorna lista (puede ser vacía).
+        """
+        result = stripe.Customer.list(email=email, limit=1)
+        return result.data
+
     # ==========================================================
     # CHECKOUT SESSION
     # ==========================================================
