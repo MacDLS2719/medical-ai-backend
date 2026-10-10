@@ -11,8 +11,8 @@ class ConnectionManager:
         await websocket.accept()
         self.active_connections[user_id] = websocket
 
-    def disconnect(self, user_id: int):
-        if user_id in self.active_connections:
+    def disconnect(self, user_id: int, websocket: WebSocket):
+        if self.active_connections.get(user_id) is websocket:
             del self.active_connections[user_id]
 
     async def send_personal_message(self, message: dict, user_id: int):
@@ -26,7 +26,7 @@ class ConnectionManager:
                 print(f"[WS] AVISO: user_id={target_id} no está en conexiones activas: {list(self.active_connections.keys())}")
         except Exception as e:
             print(f"[WS] Error enviando mensaje a user_id={user_id}: {e}")
-            self.disconnect(user_id)
+            self.disconnect(target_id, websocket)
 
 manager = ConnectionManager()
 
@@ -57,5 +57,4 @@ async def websocket_endpoint(websocket: WebSocket, user_id: int):
                 
     except WebSocketDisconnect:
         print(f"[WS] Usuario {user_id} desconectado")
-        manager.disconnect(user_id)
-
+        manager.disconnect(user_id, websocket)

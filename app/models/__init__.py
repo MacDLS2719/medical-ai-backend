@@ -46,6 +46,7 @@ from app.models.doctor_subscription import DoctorSubscription
 from app.models.payment_doctor import PaymentDoctor
 from app.models.medical_search_usage import MedicalSearchUsage
 from app.models.patient_location import PatientLocation
+from app.models.transcription_attachment import TranscriptionAttachment
 
 __all__ = [
     "User",
@@ -92,4 +93,5 @@ __all__ = [
     "PaymentDoctor",
     "MedicalSearchUsage",
     "PatientLocation",
+    "TranscriptionAttachment",
 ]

@@ -17,6 +17,7 @@ from app.core.database import Base
 from app.models.user import User
 from app.models.doctor import Doctor
 from app.models.patient import Patient
+from app.models.transcription_attachment import TranscriptionAttachment
 
 from app.models.specialty import Specialty
 from app.models.doctor_specialty import DoctorSpecialty

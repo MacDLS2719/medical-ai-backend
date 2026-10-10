@@ -28,8 +28,8 @@ class Settings(BaseSettings):
     GOOGLE_TRANSLATE_API_KEY: str = ""
     USE_LOCAL_TRANSLATION: bool = False
 
-    # Deepgram — transcripción de audio a texto
-    DEEPGRAM: str = ""
+    # Daily.co — videollamadas
+    DAILY_API_KEY: str = ""
 
     # OpenAI — generación de resúmenes y otras tareas de IA
     OPENAI_API_KEY: str = ""

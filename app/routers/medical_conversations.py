@@ -42,7 +42,11 @@ from app.services.call_transcription_service import (
 
 from app.routers.websockets import manager as ws_manager
 
-from datetime import datetime
+from datetime import datetime, timedelta
+from typing import Literal
+
+from app.models.medical_video_call import MedicalVideoCall
+from app.models.user import User
 
 
 logger = logging.getLogger(__name__)
@@ -407,6 +411,12 @@ async def create_video_call(
                 detail="Conversación no encontrada o desactivada para este usuario",
             )
 
+        if int(conversation.doctor_id) != int(actual_sender_id):
+            raise HTTPException(
+                status_code=403,
+                detail="Solo el médico puede iniciar una videollamada.",
+            )
+
         receiver_id = (
             int(conversation.doctor_id)
             if int(conversation.patient_id) == int(actual_sender_id)
@@ -416,8 +426,6 @@ async def create_video_call(
         # --------------------------------------------------
         # Obtener nombre del emisor
         # --------------------------------------------------
-
-        from app.models.user import User
 
         caller_user = db.query(User).filter(
             User.id == actual_sender_id
@@ -471,6 +479,18 @@ async def create_video_call(
             room_name,
         )
 
+        call_record = MedicalVideoCall(
+            conversation_id=conversation_id,
+            caller_id=actual_sender_id,
+            receiver_id=receiver_id,
+            room_name=room_name_final,
+            room_url=room_url,
+            status="calling",
+        )
+        db.add(call_record)
+        db.commit()
+        db.refresh(call_record)
+
         # --------------------------------------------------
         # Notificar receptor y registrar evento en chat
         # --------------------------------------------------
@@ -483,6 +503,7 @@ async def create_video_call(
                 "conversation_id": conversation_id,
                 "room_name": room_name_final,
                 "room_url": room_url,
+                "call_id": call_record.id,
             },
             receiver_id,
         )
@@ -507,6 +528,7 @@ async def create_video_call(
 
         return {
             "status": "calling",
+            "call_id": call_record.id,
             "room_name": room_name_final,
             "room_url": room_url,
         }
@@ -532,6 +554,94 @@ async def create_video_call(
             status_code=500,
             detail=f"Error al crear videollamada: {str(e)}",
         )
+
+
+@router.get("/video-calls/incoming")
+def get_incoming_video_call(
+    receiver_id: int = Query(...),
+    db: Session = Depends(get_db),
+):
+    call = (
+        db.query(MedicalVideoCall)
+        .filter(
+            MedicalVideoCall.receiver_id == receiver_id,
+            MedicalVideoCall.status.in_(("calling", "ringing")),
+            MedicalVideoCall.created_at >= datetime.now() - timedelta(minutes=2),
+        )
+        .order_by(MedicalVideoCall.created_at.desc())
+        .first()
+    )
+    if not call:
+        return None
+
+    caller = db.query(User).filter(User.id == call.caller_id).first()
+    caller_name = "Médico"
+    if caller:
+        if caller.doctor:
+            caller_name = f"Dr. {caller.doctor.first_name} {caller.doctor.last_name}".strip()
+        else:
+            caller_name = caller.email
+
+    if call.status == "calling":
+        call.status = "ringing"
+        db.commit()
+
+    return {
+        "action": "INCOMING_CALL",
+        "call_id": call.id,
+        "from_user": call.caller_id,
+        "caller_name": caller_name,
+        "conversation_id": call.conversation_id,
+        "room_name": call.room_name,
+        "room_url": call.room_url,
+    }
+
+
+@router.post("/video-calls/{call_id}/respond")
+def respond_to_video_call(
+    call_id: int,
+    user_id: int = Query(...),
+    response: Literal["accepted", "rejected", "cancelled", "ended"] = Query(...),
+    db: Session = Depends(get_db),
+):
+    call = db.query(MedicalVideoCall).filter(MedicalVideoCall.id == call_id).first()
+    if not call:
+        raise HTTPException(status_code=404, detail="Videollamada no encontrada")
+
+    is_receiver_response = (
+        user_id == call.receiver_id and response in ("accepted", "rejected", "ended")
+    )
+    is_caller_response = (
+        user_id == call.caller_id and response in ("cancelled", "ended")
+    )
+    if not (is_receiver_response or is_caller_response):
+        raise HTTPException(status_code=403, detail="Sin permiso para actualizar esta llamada")
+
+    call.status = response
+    if response in ("rejected", "cancelled", "ended"):
+        call.ended_at = datetime.now()
+    db.commit()
+    return {"status": response}
+
+
+@router.get("/video-calls/{call_id}/status")
+def get_video_call_status(
+    call_id: int,
+    user_id: int = Query(...),
+    db: Session = Depends(get_db),
+):
+    call = db.query(MedicalVideoCall).filter(MedicalVideoCall.id == call_id).first()
+    if not call:
+        raise HTTPException(status_code=404, detail="Videollamada no encontrada")
+    if user_id not in (call.caller_id, call.receiver_id):
+        raise HTTPException(status_code=403, detail="Sin permiso para consultar esta llamada")
+
+    return {
+        "status": call.status,
+        "call_id": call.id,
+        "room_name": call.room_name,
+        "room_url": call.room_url,
+    }
 
 
 # ==========================================================
@@ -725,24 +835,8 @@ async def process_video_call_recording(
             audio_file=audio_file,
         )
 
-        message_ids = [result["message_id"]]
-        if result.get("document_message_id"):
-            message_ids.append(result["document_message_id"])
-
-        for message_id in message_ids:
-            message = db.query(MedicalMessage).filter(
-                MedicalMessage.id == message_id
-            ).first()
-            if message:
-                payload = {
-                    "action": "new_message",
-                    "message": MessageResponse.model_validate(message).model_dump(mode="json"),
-                }
-                for user_id in {message.sender_id, message.receiver_id}:
-                    await ws_manager.send_personal_message(payload, user_id)
-
-                if result.get("status") == "transcription_failed":
-                    raise HTTPException(status_code=422, detail=result["error"])
+        if result.get("status") == "transcription_failed":
+            raise HTTPException(status_code=422, detail=result["error"])
 
         return {
             "status": "ok",
