@@ -93,9 +93,13 @@ class CallTranscriptionPipeline:
         return completion.choices[0].message.content.strip() or "Resumen no disponible."
 
     @staticmethod
-    def _create_document_payload(summary: str, transcript: str) -> tuple[bytes, str, str]:
+    def _create_document_payload(
+        summary: str,
+        transcript: str,
+        recording_label: str = "VIDEOLLAMADA",
+    ) -> tuple[bytes, str, str]:
         text = (
-            "RESUMEN DE VIDEOLLAMADA\n\n"
+            f"RESUMEN DE {recording_label}\n\n"
             f"{summary}\n\n"
             "--- TRANSCRIPCIÓN COMPLETA ---\n"
             f"{transcript}"
@@ -171,7 +175,52 @@ class CallTranscriptionPipeline:
         else:
             raise ValueError("Se requiere un audio de la videollamada o una URL con el archivo grabado.")
 
-        folder_path = f"medical_conversations/{conversation_id}/recordings"
+        return await CallTranscriptionPipeline._process_recording(
+            db=db,
+            conversation_id=conversation_id,
+            patient_id=patient_id,
+            doctor_id=doctor_id,
+            audio_bytes=audio_bytes,
+            original_filename=original_filename,
+            content_type=content_type,
+            storage_folder=f"medical_conversations/{conversation_id}",
+        )
+
+    @staticmethod
+    async def process_doctor_recording(
+        db: Session,
+        doctor_id: int,
+        audio_file: UploadFile,
+    ):
+        await audio_file.seek(0)
+        audio_bytes = await audio_file.read()
+        if not audio_bytes:
+            raise ValueError("La grabación está vacía. Graba audio antes de transcribir.")
+        db.rollback()
+
+        return await CallTranscriptionPipeline._process_recording(
+            db=db,
+            conversation_id=None,
+            patient_id=None,
+            doctor_id=doctor_id,
+            audio_bytes=audio_bytes,
+            original_filename=audio_file.filename or "doctor-recording.webm",
+            content_type=audio_file.content_type or "audio/webm",
+            storage_folder=f"doctor_transcriptions/{doctor_id}",
+        )
+
+    @staticmethod
+    async def _process_recording(
+        db: Session,
+        conversation_id: int | None,
+        patient_id: int | None,
+        doctor_id: int,
+        audio_bytes: bytes,
+        original_filename: str,
+        content_type: str,
+        storage_folder: str,
+    ):
+        folder_path = f"{storage_folder}/recordings"
         audio_upload = await CallTranscriptionPipeline._upload_to_cloudinary(
             file_bytes=audio_bytes,
             filename=original_filename,
@@ -208,15 +257,15 @@ class CallTranscriptionPipeline:
             )
             if not transcript:
                 error_message = (
-                    "OpenAI no detectó voz en el audio. Comprueba que se compartió el audio "
-                    "de la pestaña y vuelve a grabar."
+                    "OpenAI no detectó voz en el audio. Comprueba el micrófono o la fuente de audio "
+                    "compartida y vuelve a grabar."
                 )
                 transcription_attachment.status = "failed"
                 transcription_attachment.error_message = error_message
                 db.commit()
                 logger.warning(
                     "OpenAI returned an empty transcript (conversation_id=%s, audio_bytes=%s)",
-                    conversation_id,
+                    conversation_id or "doctor-only",
                     len(audio_bytes),
                 )
                 return {
@@ -231,12 +280,14 @@ class CallTranscriptionPipeline:
             document_bytes, _, _ = CallTranscriptionPipeline._create_document_payload(
                 summary,
                 transcript,
+                "GRABACIÓN PERSONAL" if conversation_id is None else "VIDEOLLAMADA",
             )
+            document_upload = None
             try:
                 document_upload = await CallTranscriptionPipeline._upload_to_cloudinary(
                     file_bytes=document_bytes,
                     filename=document_name,
-                    folder=f"medical_conversations/{conversation_id}/documents",
+                    folder=f"{storage_folder}/documents",
                     resource_type="raw",
                 )
             except Exception as document_error:
@@ -279,6 +330,6 @@ class CallTranscriptionPipeline:
             "recording_url": transcription_attachment.recording_url,
             "transcript_file_url": transcription_attachment.transcript_file_url,
             "transcript": transcript,
-        "summary": summary,
-        "recorded_at": transcription_attachment.recorded_at.isoformat(),
+            "summary": summary,
+            "recorded_at": transcription_attachment.recorded_at.isoformat(),
         }

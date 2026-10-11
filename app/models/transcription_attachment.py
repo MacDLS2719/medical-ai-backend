@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -13,13 +13,13 @@ class TranscriptionAttachment(Base):
     conversation_id = Column(
         Integer,
         ForeignKey("medical_conversations.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
     patient_id = Column(
         Integer,
         ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
     doctor_id = Column(
@@ -40,6 +40,14 @@ class TranscriptionAttachment(Base):
     transcript_file_name = Column(String(255), nullable=True)
     transcript_text = Column(Text, nullable=True)
     summary_text = Column(Text, nullable=True)
+    summary_approved = Column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+        index=True,
+    )
+    summary_approved_at = Column(DateTime, nullable=True)
 
     status = Column(
         String(30),

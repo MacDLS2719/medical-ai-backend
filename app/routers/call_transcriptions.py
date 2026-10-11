@@ -1,14 +1,21 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, or_
+import logging
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi.responses import Response
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
 from app.core.deps import get_db
+from app.services.call_transcription_service import CallTranscriptionPipeline
+from app.services.transcription_pdf_service import create_transcription_report_pdf
 from app.models.transcription_attachment import TranscriptionAttachment
 from app.models.user import User
 
 
 router = APIRouter(tags=["Call Transcriptions"])
+logger = logging.getLogger(__name__)
 
 
 @router.get("/call-transcriptions/patients")
@@ -25,7 +32,10 @@ def list_transcription_patients(
             func.count(TranscriptionAttachment.id).label("recording_count"),
             func.max(TranscriptionAttachment.recorded_at).label("latest_recorded_at"),
         )
-        .filter(TranscriptionAttachment.doctor_id == current_user.id)
+        .filter(
+            TranscriptionAttachment.doctor_id == current_user.id,
+            TranscriptionAttachment.patient_id.isnot(None),
+        )
         .group_by(TranscriptionAttachment.patient_id)
         .all()
     )
@@ -50,6 +60,54 @@ def list_transcription_patients(
     ]
 
 
+@router.get("/call-transcriptions/doctor")
+def list_doctor_transcriptions(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.role != "doctor":
+        raise HTTPException(status_code=403, detail="Solo los médicos pueden consultar este historial")
+
+    records = (
+        db.query(TranscriptionAttachment)
+        .filter(
+            TranscriptionAttachment.doctor_id == current_user.id,
+            TranscriptionAttachment.conversation_id.is_(None),
+        )
+        .order_by(TranscriptionAttachment.recorded_at.desc())
+        .all()
+    )
+    return [_serialize(record, include_text=True) for record in records]
+
+
+@router.post("/call-transcriptions/doctor")
+async def create_doctor_transcription(
+    audio_file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.role != "doctor":
+        raise HTTPException(status_code=403, detail="Solo los médicos pueden crear transcripciones personales")
+
+    doctor_id = current_user.id
+    try:
+        result = await CallTranscriptionPipeline.process_doctor_recording(
+            db=db,
+            doctor_id=doctor_id,
+            audio_file=audio_file,
+        )
+        if result.get("status") == "transcription_failed":
+            raise HTTPException(status_code=422, detail=result["error"])
+        return {"status": "ok", "data": result}
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.exception("Error procesando una grabación personal del médico %s", doctor_id)
+        raise HTTPException(status_code=500, detail=f"Error procesando la grabación: {exc}")
+
+
 @router.get("/call-transcriptions/patients/{patient_id}")
 def list_patient_call_transcriptions(
     patient_id: int,
@@ -71,6 +129,107 @@ def list_patient_call_transcriptions(
     return [_serialize(record, include_text=True) for record in records]
 
 
+@router.post("/call-transcriptions/{transcription_id}/approve")
+def approve_call_transcription_summary(
+    transcription_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.role != "doctor":
+        raise HTTPException(status_code=403, detail="Solo los médicos pueden aprobar resúmenes")
+
+    record = (
+        db.query(TranscriptionAttachment)
+        .filter(
+            TranscriptionAttachment.id == transcription_id,
+            TranscriptionAttachment.doctor_id == current_user.id,
+        )
+        .first()
+    )
+    if not record:
+        raise HTTPException(status_code=404, detail="Transcripción no encontrada")
+    if record.patient_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Las grabaciones personales no se comparten con pacientes.",
+        )
+    if record.status != "completed" or not record.summary_text:
+        raise HTTPException(
+            status_code=409,
+            detail="Solo se puede aprobar un resumen completado.",
+        )
+
+    if not record.summary_approved:
+        record.summary_approved = True
+        record.summary_approved_at = datetime.utcnow()
+        db.commit()
+        db.refresh(record)
+    return _serialize(record, include_text=True)
+
+
+@router.get("/call-transcriptions/patient")
+def list_patient_transcriptions(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.role != "patient":
+        raise HTTPException(status_code=403, detail="Solo los pacientes pueden consultar sus informes")
+
+    records = (
+        db.query(TranscriptionAttachment)
+        .filter(
+            TranscriptionAttachment.patient_id == current_user.id,
+        )
+        .order_by(TranscriptionAttachment.recorded_at.desc())
+        .all()
+    )
+    return [
+        _serialize(
+            record,
+            include_text=record.summary_approved,
+            include_preview=False,
+        )
+        for record in records
+    ]
+
+
+@router.get("/call-transcriptions/{transcription_id}/report.pdf")
+def download_call_transcription_report(
+    transcription_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    record = (
+        db.query(TranscriptionAttachment)
+        .filter(TranscriptionAttachment.id == transcription_id)
+        .first()
+    )
+    if not record:
+        raise HTTPException(status_code=404, detail="Transcripción no encontrada")
+    if current_user.id == record.doctor_id and current_user.role == "doctor":
+        pass
+    elif (
+        current_user.role == "patient"
+        and current_user.id == record.patient_id
+        and record.summary_approved
+    ):
+        pass
+    else:
+        raise HTTPException(status_code=403, detail="Sin acceso al informe")
+    if not record.summary_text or not record.transcript_text:
+        raise HTTPException(status_code=409, detail="El informe aún no está completo.")
+
+    pdf = create_transcription_report_pdf(record.summary_text, record.transcript_text)
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="informe-transcripcion-{record.id}.pdf"',
+            "Cache-Control": "private, no-store",
+        },
+    )
+
+
 @router.get("/call-transcriptions")
 def list_call_transcriptions(
     skip: int = Query(default=0, ge=0),
@@ -82,8 +241,15 @@ def list_call_transcriptions(
         db.query(TranscriptionAttachment)
         .filter(
             or_(
-                TranscriptionAttachment.doctor_id == current_user.id,
-                TranscriptionAttachment.patient_id == current_user.id,
+                and_(
+                    TranscriptionAttachment.doctor_id == current_user.id,
+                    current_user.role == "doctor",
+                ),
+                and_(
+                    TranscriptionAttachment.patient_id == current_user.id,
+                    TranscriptionAttachment.summary_approved.is_(True),
+                    current_user.role == "patient",
+                ),
             )
         )
         .order_by(TranscriptionAttachment.recorded_at.desc())
@@ -91,7 +257,10 @@ def list_call_transcriptions(
         .limit(limit)
         .all()
     )
-    return [_serialize(record) for record in records]
+    return [
+        _serialize(record, include_preview=current_user.role != "patient")
+        for record in records
+    ]
 
 
 @router.get("/call-transcriptions/{transcription_id}")
@@ -109,10 +278,19 @@ def get_call_transcription(
         raise HTTPException(status_code=404, detail="Transcripción no encontrada")
     if current_user.id not in (record.doctor_id, record.patient_id):
         raise HTTPException(status_code=403, detail="Sin acceso")
-    return _serialize(record, include_text=True)
+    is_patient = current_user.role == "patient"
+    return _serialize(
+        record,
+        include_text=not is_patient or record.summary_approved,
+        include_preview=not is_patient,
+    )
 
 
-def _serialize(record: TranscriptionAttachment, include_text: bool = False) -> dict:
+def _serialize(
+    record: TranscriptionAttachment,
+    include_text: bool = False,
+    include_preview: bool = True,
+) -> dict:
     data = {
         "id": record.id,
         "conversation_id": record.conversation_id,
@@ -121,6 +299,12 @@ def _serialize(record: TranscriptionAttachment, include_text: bool = False) -> d
         "patient_name": _user_name(record.patient, "Paciente"),
         "doctor_name": _user_name(record.doctor, "Médico"),
         "status": record.status,
+        "summary_approved": record.summary_approved,
+        "summary_approved_at": (
+            record.summary_approved_at.isoformat()
+            if record.summary_approved_at
+            else None
+        ),
         "recording_url": record.recording_url,
         "recording_file_name": record.recording_file_name,
         "transcript_file_url": record.transcript_file_url,
@@ -133,7 +317,7 @@ def _serialize(record: TranscriptionAttachment, include_text: bool = False) -> d
         data["transcript_text"] = record.transcript_text
         data["summary_text"] = record.summary_text
         data["error_message"] = record.error_message
-    else:
+    elif include_preview:
         data["transcript_preview"] = (
             record.transcript_text or record.summary_text or ""
         )[:200] or None
