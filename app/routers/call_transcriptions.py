@@ -9,7 +9,11 @@ from sqlalchemy.orm import Session
 from app.core.auth import get_current_user
 from app.core.deps import get_db
 from app.services.call_transcription_service import CallTranscriptionPipeline
-from app.services.transcription_pdf_service import create_transcription_report_pdf
+from app.services.transcription_pdf_service import (
+    create_clinical_report_pdf,
+    create_transcription_pdf,
+    create_transcription_report_pdf,
+)
 from app.models.transcription_attachment import TranscriptionAttachment
 from app.models.user import User
 
@@ -193,12 +197,11 @@ def list_patient_transcriptions(
     ]
 
 
-@router.get("/call-transcriptions/{transcription_id}/report.pdf")
-def download_call_transcription_report(
+def _get_authorized_record(
+    db: Session,
     transcription_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
+    current_user: User,
+) -> TranscriptionAttachment:
     record = (
         db.query(TranscriptionAttachment)
         .filter(TranscriptionAttachment.id == transcription_id)
@@ -207,27 +210,124 @@ def download_call_transcription_report(
     if not record:
         raise HTTPException(status_code=404, detail="Transcripción no encontrada")
     if current_user.id == record.doctor_id and current_user.role == "doctor":
-        pass
-    elif (
+        return record
+    if (
         current_user.role == "patient"
         and current_user.id == record.patient_id
         and record.summary_approved
     ):
-        pass
-    else:
-        raise HTTPException(status_code=403, detail="Sin acceso al informe")
-    if not record.summary_text or not record.transcript_text:
-        raise HTTPException(status_code=409, detail="El informe aún no está completo.")
+        return record
+    raise HTTPException(status_code=403, detail="Sin acceso al informe o transcripción")
 
-    pdf = create_transcription_report_pdf(record.summary_text, record.transcript_text)
+
+def _format_spanish_datetime(dt: datetime | None) -> str:
+    if not dt:
+        return "Fecha no disponible"
+    meses = [
+        "", "enero", "febrero", "marzo", "abril", "mayo", "junio",
+        "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"
+    ]
+    return f"{dt.day} de {meses[dt.month]} de {dt.year}, {dt.strftime('%H:%M')}"
+
+
+def _patient_gender(user: User | None) -> str:
+    if not user:
+        return "No especificado"
+    patient_profile = getattr(user, "patient", None)
+    if patient_profile and getattr(patient_profile, "gender", None):
+        return patient_profile.gender
+    return "No especificado"
+
+
+@router.get("/call-transcriptions/{transcription_id}/clinical-report.pdf")
+def download_clinical_report(
+    transcription_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Descarga el INFORME MÉDICO oficial generado por la IA en formato PDF.
+    Contiene: Servicio, Medicina General, Fecha, Datos del Paciente (Nombre, Sexo),
+    Motivo de consulta, Exploración física, Impresión diagnóstica y Plan y tratamiento.
+    """
+    record = _get_authorized_record(db, transcription_id, current_user)
+    if not record.summary_text:
+        raise HTTPException(status_code=409, detail="El informe médico aún no está completo.")
+
+    service_type = "Videollamada" if record.conversation_id is not None else "Presencial"
+    date_str = _format_spanish_datetime(record.recorded_at or record.created_at)
+    patient_name = _user_name(
+        record.patient,
+        "Consulta personal / presencial" if record.conversation_id is None else "Paciente",
+    )
+    patient_gender = _patient_gender(record.patient)
+    doctor_name = _user_name(record.doctor, "Médico tratante")
+
+    pdf = create_clinical_report_pdf(
+        service_type=service_type,
+        specialty="Medicina General",
+        date_str=date_str,
+        patient_name=patient_name,
+        patient_gender=patient_gender,
+        doctor_name=doctor_name,
+        summary=record.summary_text,
+    )
     return Response(
         content=pdf,
         media_type="application/pdf",
         headers={
-            "Content-Disposition": f'attachment; filename="informe-transcripcion-{record.id}.pdf"',
+            "Content-Disposition": f'attachment; filename="informe-medico-{record.id}.pdf"',
             "Cache-Control": "private, no-store",
         },
     )
+
+
+@router.get("/call-transcriptions/{transcription_id}/transcript.pdf")
+def download_transcript_pdf(
+    transcription_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Descarga la TRANSCRIPCIÓN COMPLETA del audio de la consulta médica en formato PDF.
+    """
+    record = _get_authorized_record(db, transcription_id, current_user)
+    if not record.transcript_text:
+        raise HTTPException(status_code=409, detail="La transcripción de audio aún no está disponible.")
+
+    service_type = "Videollamada" if record.conversation_id is not None else "Presencial"
+    date_str = _format_spanish_datetime(record.recorded_at or record.created_at)
+    patient_name = _user_name(
+        record.patient,
+        "Consulta personal / presencial" if record.conversation_id is None else "Paciente",
+    )
+    doctor_name = _user_name(record.doctor, "Médico tratante")
+
+    pdf = create_transcription_pdf(
+        service_type=service_type,
+        specialty="Medicina General",
+        date_str=date_str,
+        patient_name=patient_name,
+        doctor_name=doctor_name,
+        transcript=record.transcript_text,
+    )
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="transcripcion-{record.id}.pdf"',
+            "Cache-Control": "private, no-store",
+        },
+    )
+
+
+@router.get("/call-transcriptions/{transcription_id}/report.pdf")
+def download_call_transcription_report(
+    transcription_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return download_clinical_report(transcription_id, db, current_user)
 
 
 @router.get("/call-transcriptions")
