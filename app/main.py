@@ -25,6 +25,8 @@ from app.routers import (
     health_places,
     support_ai,
     call_transcriptions,
+    doctor_google,
+    doctor_search,
 )
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -159,6 +161,17 @@ app.include_router(
     support_ai.router,
     prefix="/api",
 )
+
+app.include_router(
+    doctor_google.router,
+    prefix="/api",
+)
+
+app.include_router(
+    doctor_search.router,
+    prefix="/api",
+)
+
 
 from app.core.alert_scheduler import start_scheduler
 

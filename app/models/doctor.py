@@ -17,6 +17,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 from app.core.encryption import EncryptedString, EncryptedText
 from app.models.medical_verification import MedicalVerification
+from app.models.doctor_google_profile import DoctorGoogleProfile
+
 
 
 class Doctor(Base):
@@ -95,17 +97,6 @@ class Doctor(Base):
         index=True
     )
 
-    # ==========================================================
-    # IDENTIFICACIÓN PROFESIONAL
-    # ==========================================================
-
-    medical_license: Mapped[str] = mapped_column(
-        EncryptedString(100),
-        unique=True,
-        nullable=False,
-        index=True
-    )
-
     # Documento de identidad
     identity_document_url: Mapped[str | None] = mapped_column(
         EncryptedString(500),
@@ -113,27 +104,21 @@ class Doctor(Base):
     )
 
     # ==========================================================
-    # COLEGIACIÓN PROFESIONAL
+    # INFORMACIÓN DE VERIFICACIÓN
     # ==========================================================
-
-    professional_registration_number: Mapped[str | None] = mapped_column(
-        EncryptedString(100),
-        nullable=True
-    )
-
-    professional_college: Mapped[str | None] = mapped_column(
-        EncryptedString(255),
-        nullable=True
-    )
 
     college_country: Mapped[str | None] = mapped_column(
         String(100),
         nullable=True
     )
 
-    # Certificacion de colegiacion
     professional_registration_certificate_url: Mapped[str | None] = mapped_column(
         EncryptedString(500),
+        nullable=True
+    )
+
+    linkgoogle: Mapped[str | None] = mapped_column(
+        String(1000),
         nullable=True
     )
 
@@ -362,4 +347,14 @@ class Doctor(Base):
         cascade="all, delete-orphan",
     )
 
+    # ==========================================================
+    # PERFIL DE GOOGLE
+    # ==========================================================
+
+    google_profile = relationship(
+        "DoctorGoogleProfile",
+        back_populates="doctor",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
 

@@ -37,6 +37,8 @@ from app.models.subscription_plan import SubscriptionPlan
 from app.models.doctor_subscription import DoctorSubscription
 
 from app.services.cloudinary_service import cloudinary_service
+from app.services.doctor_google_save_service import doctor_google_save_service
+
 
 
 router = APIRouter(
@@ -153,14 +155,6 @@ def register_doctor(
             detail="Ya existe un usuario registrado con este correo electrónico",
         )
 
-    # 2. Validar si la licencia médica ya existe
-    existing_license = db.query(Doctor).filter(Doctor.medical_license == data.medical_license).first()
-    if existing_license:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Ya existe un médico registrado con esta licencia médica",
-        )
-
     # 3. Crear usuario
     new_user = User(
         email=data.email,
@@ -180,10 +174,8 @@ def register_doctor(
         last_name=data.last_name,
         date_of_birth=data.date_of_birth,
         residence_country=data.residence_country,
-        medical_license=data.medical_license,
-        professional_registration_number=data.professional_registration_number,
-        professional_college=data.professional_college,
         college_country=data.college_country,
+        linkgoogle=data.linkgoogle,
         specialty=data.specialty,
         phone=data.phone,
         experience=data.experience,
@@ -262,11 +254,24 @@ def register_doctor(
         db.add(new_subscription)
         db.commit()
 
+    # 7. Si se envió información del perfil de Google, guardarla en doctor_google_profiles
+    if getattr(data, "google_profile_data", None):
+        try:
+            doctor_google_save_service.save_profile(
+                db=db,
+                doctor_id=new_doctor.id,
+                data=data.google_profile_data,
+            )
+            db.commit()
+        except Exception as e:
+            print("Error guardando perfil de Google al registrar médico:", e)
+
     return get_doctor_profile(
         current_user=new_user,
         doctor=new_doctor,
         db=db,
     )
+
 
 
 
@@ -290,15 +295,6 @@ def register_free_doctor(
             detail="Ya existe un usuario registrado con este correo electrónico",
         )
 
-    # 2. Validar si la licencia médica / colegiado ya existe
-    # Usamos professional_registration_number como medical_license internamente
-    existing_license = db.query(Doctor).filter(Doctor.medical_license == data.professional_registration_number).first()
-    if existing_license:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Ya existe un médico registrado con este número de colegiado",
-        )
-
     # 3. Crear usuario
     new_user = User(
         email=data.email,
@@ -317,8 +313,7 @@ def register_free_doctor(
         first_name=data.first_name,
         last_name=data.last_name,
         residence_country=data.residence_country,
-        professional_registration_number=data.professional_registration_number,
-        medical_license=data.professional_registration_number,  # mapped from colegiado
+        linkgoogle=data.linkgoogle,
         specialty=data.specialty,
         phone=data.phone,
         data_policy_accepted=True,
@@ -398,11 +393,24 @@ def register_free_doctor(
     db.add(new_subscription)
     db.commit()
 
+    # 7. Si se envió información del perfil de Google, guardarla en doctor_google_profiles
+    if getattr(data, "google_profile_data", None):
+        try:
+            doctor_google_save_service.save_profile(
+                db=db,
+                doctor_id=new_doctor.id,
+                data=data.google_profile_data,
+            )
+            db.commit()
+        except Exception as e:
+            print("Error guardando perfil de Google al registrar médico free:", e)
+
     return get_doctor_profile(
         current_user=new_user,
         doctor=new_doctor,
         db=db,
     )
+
 
 
 
@@ -505,20 +513,7 @@ def get_doctor_profile(
         # IDENTIFICACIÓN PROFESIONAL
         # --------------------------------------------------
 
-        "medical_license": doctor.medical_license,
         "identity_document_url": doctor.identity_document_url,
-
-        # --------------------------------------------------
-        # COLEGIACIÓN
-        # --------------------------------------------------
-
-        "professional_registration_number": (
-            doctor.professional_registration_number
-        ),
-
-        "professional_college": (
-            doctor.professional_college
-        ),
 
         "college_country": (
             doctor.college_country
@@ -527,6 +522,8 @@ def get_doctor_profile(
         "professional_registration_certificate_url": (
             doctor.professional_registration_certificate_url
         ),
+
+        "linkgoogle": doctor.linkgoogle,
 
         # --------------------------------------------------
         # INFORMACIÓN PROFESIONAL

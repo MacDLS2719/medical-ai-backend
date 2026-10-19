@@ -76,7 +76,6 @@ def seed_database():
                 user_id=user_doctor.id,
                 first_name="Jane",
                 last_name="Smith",
-                medical_license="MED987654",
                 specialty="Endocrinology"
             )
             db.add(doctor)

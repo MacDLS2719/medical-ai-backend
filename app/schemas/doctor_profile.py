@@ -1,7 +1,8 @@
 from datetime import date, datetime
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from pydantic import BaseModel, Field, ConfigDict
+
 
 
 # ==========================================================
@@ -166,28 +167,9 @@ class DoctorProfileUpdate(BaseModel):
     # IDENTIFICACIÓN
     # ------------------------------------------------------
 
-    medical_license: Optional[str] = Field(
-        default=None,
-        max_length=100
-    )
-
     identity_document_url: Optional[str] = Field(
         default=None,
         max_length=500
-    )
-
-    # ------------------------------------------------------
-    # COLEGIACIÓN
-    # ------------------------------------------------------
-
-    professional_registration_number: Optional[str] = Field(
-        default=None,
-        max_length=100
-    )
-
-    professional_college: Optional[str] = Field(
-        default=None,
-        max_length=255
     )
 
     college_country: Optional[str] = Field(
@@ -198,6 +180,11 @@ class DoctorProfileUpdate(BaseModel):
     professional_registration_certificate_url: Optional[str] = Field(
         default=None,
         max_length=500
+    )
+
+    linkgoogle: Optional[str] = Field(
+        default=None,
+        max_length=1000
     )
 
     # ------------------------------------------------------
@@ -279,6 +266,13 @@ class DoctorProfileUpdate(BaseModel):
 
     data_policy_accepted_at: Optional[datetime] = None
 
+    # ------------------------------------------------------
+    # PERFIL DE GOOGLE ASOCIADO
+    # ------------------------------------------------------
+
+    google_profile_data: Optional[dict[str, Any]] = None
+
+
 
 # ==========================================================
 # DOCTOR PROFILE RESPONSE
@@ -315,21 +309,13 @@ class DoctorProfileResponse(BaseModel):
     # IDENTIFICACIÓN PROFESIONAL
     # ------------------------------------------------------
 
-    medical_license: str
-
     identity_document_url: Optional[str] = None
-
-    # ------------------------------------------------------
-    # COLEGIACIÓN
-    # ------------------------------------------------------
-
-    professional_registration_number: Optional[str] = None
-
-    professional_college: Optional[str] = None
 
     college_country: Optional[str] = None
 
     professional_registration_certificate_url: Optional[str] = None
+
+    linkgoogle: Optional[str] = None
 
     # ------------------------------------------------------
     # INFORMACIÓN PROFESIONAL
@@ -383,6 +369,9 @@ class DoctorProfileResponse(BaseModel):
     data_policy_accepted: bool
 
     data_policy_accepted_at: Optional[datetime] = None
+
+    google_profile_data: Optional[dict[str, Any]] = None
+
 
     # ------------------------------------------------------
     # RELACIONES
@@ -443,10 +432,9 @@ class DoctorFreeCreateRequest(BaseModel):
         max_length=100
     )
 
-    professional_registration_number: str = Field(
-        ...,
-        min_length=1,
-        max_length=100
+    linkgoogle: Optional[str] = Field(
+        default=None,
+        max_length=1000
     )
 
     specialty: str = Field(
@@ -498,12 +486,6 @@ class DoctorCreateRequest(BaseModel):
         max_length=255
     )
 
-    medical_license: str = Field(
-        ...,
-        min_length=1,
-        max_length=100
-    )
-
     specialty: str = Field(
         ...,
         min_length=1,
@@ -552,19 +534,14 @@ class DoctorCreateRequest(BaseModel):
         max_length=100
     )
 
-    professional_registration_number: Optional[str] = Field(
-        default=None,
-        max_length=100
-    )
-
-    professional_college: Optional[str] = Field(
-        default=None,
-        max_length=255
-    )
-
     college_country: Optional[str] = Field(
         default=None,
         max_length=100
+    )
+
+    linkgoogle: Optional[str] = Field(
+        default=None,
+        max_length=1000
     )
 
     postal_code: Optional[str] = Field(

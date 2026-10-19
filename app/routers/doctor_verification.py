@@ -24,9 +24,7 @@ class DoctorVerificationDetailResponse(BaseModel):
     email: str
     phone: Optional[str] = None
     residence_country: Optional[str] = None
-    medical_license: str
-    professional_registration_number: Optional[str] = None
-    professional_college: Optional[str] = None
+    linkgoogle: Optional[str] = None
     college_country: Optional[str] = None
     specialty: str
     years_of_experience: Optional[int] = None
@@ -77,9 +75,7 @@ def get_all_doctors_for_verification(
                 email=doc.user.email if doc.user else "",
                 phone=doc.phone,
                 residence_country=doc.residence_country,
-                medical_license=doc.medical_license,
-                professional_registration_number=doc.professional_registration_number,
-                professional_college=doc.professional_college,
+                linkgoogle=doc.linkgoogle,
                 college_country=doc.college_country,
                 specialty=doc.specialty,
                 years_of_experience=doc.years_of_experience,
@@ -119,9 +115,7 @@ def get_doctor_for_verification(doctor_id: int, db: Session = Depends(get_db)):
         email=doc.user.email if doc.user else "",
         phone=doc.phone,
         residence_country=doc.residence_country,
-        medical_license=doc.medical_license,
-        professional_registration_number=doc.professional_registration_number,
-        professional_college=doc.professional_college,
+        linkgoogle=doc.linkgoogle,
         college_country=doc.college_country,
         specialty=doc.specialty,
         years_of_experience=doc.years_of_experience,
