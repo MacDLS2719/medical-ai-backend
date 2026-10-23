@@ -70,7 +70,22 @@ class DoctorGoogleProfileData(BaseModel):
     booking_url: str | None = None
     google_maps_url: str | None = None
     website_url: str | None = None
-    photos: list[str] = Field(default_factory=list, max_length=3)
+    photos: list[str] = Field(default_factory=list)
+
+    @field_validator("photos", mode="before")
+    @classmethod
+    def sanitize_photos(cls, v: Any) -> list[str]:
+        if isinstance(v, list):
+            clean = []
+            for p in v:
+                if isinstance(p, str) and (p.startswith("http") or p.startswith("data:image/")):
+                    clean.append(p)
+                elif isinstance(p, dict) and (p.get("image_url") or p.get("url")):
+                    u = p.get("image_url") or p.get("url")
+                    if isinstance(u, str) and (u.startswith("http") or u.startswith("data:image/")):
+                        clean.append(u)
+            return clean[:3]
+        return []
 
     @model_validator(mode="after")
     def sanitize_urls(self):
@@ -121,6 +136,7 @@ class DoctorGoogleProfileResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     images: list[DoctorGoogleImageResponse] = Field(default_factory=list)
+    photos: list[str] = Field(default_factory=list)
 
 
 class DoctorGoogleMessageResponse(BaseModel):

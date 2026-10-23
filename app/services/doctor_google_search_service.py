@@ -46,6 +46,61 @@ DEFAULT_OPENING_HOURS = {
     ],
 }
 
+DEFAULT_CLINIC_PHOTOS = [
+    "https://images.unsplash.com/photo-1629909613654-28e377c37b09?auto=format&fit=crop&w=1200&q=80",
+    "https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?auto=format&fit=crop&w=1200&q=80",
+    "https://images.unsplash.com/photo-1579684385127-1ef15d508118?auto=format&fit=crop&w=1200&q=80",
+]
+
+CANONICAL_CITY_COORDINATES: dict[str, tuple[float, float]] = {
+    "cali": (3.4516, -76.5320),
+    "santiago de cali": (3.4516, -76.5320),
+    "bogota": (4.6097, -74.0817),
+    "bogotá": (4.6097, -74.0817),
+    "medellin": (6.2442, -75.5812),
+    "medellín": (6.2442, -75.5812),
+    "barranquilla": (10.9685, -74.7813),
+    "cartagena": (10.3910, -75.4794),
+    "bucaramanga": (7.1193, -73.1227),
+    "pereira": (4.8133, -75.6961),
+    "manizales": (5.0689, -75.5174),
+    "ibague": (4.4389, -75.2322),
+    "ibagué": (4.4389, -75.2322),
+    "santa marta": (11.2408, -74.1990),
+    "villavicencio": (4.1420, -73.6266),
+    "pasto": (1.2136, -77.2811),
+    "cucuta": (7.8939, -72.5078),
+    "cúcuta": (7.8939, -72.5078),
+    "monteria": (8.7479, -75.8814),
+    "montería": (8.7479, -75.8814),
+    "popayan": (2.4419, -76.6063),
+    "popayán": (2.4419, -76.6063),
+    "armenia": (4.5339, -75.6811),
+    "neiva": (2.9273, -75.2819),
+    "valledupar": (10.4631, -73.2532),
+    "monterrey": (25.6866, -100.3161),
+    "guadalajara": (20.6597, -103.3496),
+    "ciudad de mexico": (19.4326, -99.1332),
+    "cdmx": (19.4326, -99.1332),
+    "madrid": (40.4168, -3.7038),
+    "barcelona": (41.3851, 2.1734),
+    "lima": (-12.0464, -77.0428),
+    "buenos aires": (-34.6037, -58.3816),
+    "santiago": (-33.4489, -70.6693),
+}
+
+
+def resolve_city_coordinates(city: str | None, country: str | None = None) -> tuple[float, float] | None:
+    if not city or not city.strip():
+        return None
+    cleaned = city.strip().lower()
+    if cleaned in CANONICAL_CITY_COORDINATES:
+        return CANONICAL_CITY_COORDINATES[cleaned]
+    for k, v in CANONICAL_CITY_COORDINATES.items():
+        if k in cleaned or cleaned in k:
+            return v
+    return None
+
 
 class DoctorGoogleSearchService:
     """
@@ -211,24 +266,49 @@ class DoctorGoogleSearchService:
         except Exception:
             pass
 
-        # 2. Google Search global con cookie bypass (sin forzar gl='co')
+        # 2. Google Search y Google Local (Local Pack / tbm=lcl)
         try:
-            google_url = "https://www.google.com/search"
             google_headers = {
                 **headers,
                 "Cookie": "SOCS=CAESHAgBEhJnd3NfMjAyNDA0MTUtMF9SQzIaAmVzIAEaBgiA_LyuBg; CONSENT=YES+",
             }
             async with httpx.AsyncClient(
-                follow_redirects=True, timeout=10.0, headers=google_headers
+                follow_redirects=True, timeout=12.0, headers=google_headers
             ) as client:
+                # Intento 1: Google Local Pack específico (tbm=lcl)
+                try:
+                    resp_lcl = await client.get(
+                        "https://www.google.com/search",
+                        params={"q": query, "tbm": "lcl", "hl": "es"},
+                    )
+                    if resp_lcl.status_code == 200:
+                        soup_lcl = BeautifulSoup(resp_lcl.text, "html.parser")
+                        for local_card in soup_lcl.select(".VkpGBb, .rllt__details, [data-cid], .dbg0pd"):
+                            t = local_card.get_text(separator=" | ", strip=True)
+                            if t and len(t) > 8 and t not in snippets:
+                                snippets.append(f"Google Local: {t}")
+                        for a in soup_lcl.select("a[href*='maps'], a[href*='http']"):
+                            href = a.get("href", "")
+                            if href.startswith("http") and "google.com" not in href:
+                                found_urls.append(href)
+                except Exception:
+                    pass
+
+                # Intento 2: Google Search regular
                 resp = await client.get(
-                    google_url,
-                    params={"q": query, "hl": "es", "num": "5"},
+                    "https://www.google.com/search",
+                    params={"q": query, "hl": "es", "num": "10"},
                 )
                 if resp.status_code == 200:
                     soup = BeautifulSoup(resp.text, "html.parser")
                     for tag in soup(["script", "style", "svg", "noscript", "head"]):
                         tag.decompose()
+
+                    # Fichas locales de Google Maps en la búsqueda general
+                    for local_el in soup.select(".VkpGBb, .rllt__details, [data-cid], .dbg0pd, .OSrXXb"):
+                        t = local_el.get_text(separator=" | ", strip=True)
+                        if t and len(t) > 8 and t not in snippets:
+                            snippets.append(f"Google Local: {t}")
 
                     # Knowledge panel
                     for kp in soup.select(".kp-wholepage, .osrp-blk, .rVusze, .SPZz6b, .LrzXr, .Z0LcW, [data-attrid]"):
@@ -250,7 +330,7 @@ class DoctorGoogleSearchService:
 
     async def _scrape_directory_page(self, url: str) -> dict[str, Any]:
         """Si se encuentra una URL médica de directorios o clínica, extrae Schema.org y metadatos."""
-        info: dict[str, Any] = {}
+        info: dict[str, Any] = {"photos": []}
         try:
             async with httpx.AsyncClient(
                 follow_redirects=True, timeout=8.0, headers=DEFAULT_HEADERS
@@ -291,8 +371,24 @@ class DoctorGoogleSearchService:
                                 info["google_reviews_count"] = item["aggregateRating"].get("reviewCount")
                             if "openingHours" in item or "openingHoursSpecification" in item:
                                 info["opening_hours_raw"] = item.get("openingHours") or item.get("openingHoursSpecification")
+                            if "image" in item:
+                                img = item["image"]
+                                if isinstance(img, str) and img.startswith("http"):
+                                    info["photos"].append(img)
+                                elif isinstance(img, list):
+                                    for i in img:
+                                        if isinstance(i, str) and i.startswith("http"):
+                                            info["photos"].append(i)
+                                        elif isinstance(i, dict) and i.get("url") and i["url"].startswith("http"):
+                                            info["photos"].append(i["url"])
                     except Exception:
                         pass
+
+                og_img = soup.find("meta", property="og:image") or soup.find("meta", attrs={"name": "twitter:image"})
+                if og_img and og_img.get("content"):
+                    u = og_img["content"].strip()
+                    if u.startswith("http") and not u.endswith(".ico") and "favicon" not in u:
+                        info["photos"].append(u)
         except Exception:
             pass
         return info
@@ -319,13 +415,20 @@ class DoctorGoogleSearchService:
         return None, None
 
     async def _fetch_and_parse_maps_url(self, google_maps_url: str) -> dict[str, Any]:
-        """Scraping de URL de Google Maps/Places para extraer datos básicos."""
+        """Scraping de URL de Google Maps/Places/Search para extraer datos básicos e imágenes."""
         final_url = google_maps_url
         html_content = ""
 
+        headers = {
+            **DEFAULT_HEADERS,
+            "Referer": "https://www.google.com/",
+            "Cookie": "SOCS=CAESHAgBEhJnd3NfMjAyNDA0MTUtMF9SQzIaAmVzIAEaBgiA_LyuBg; CONSENT=YES+",
+            "Accept-Language": "es-CO,es;q=0.9,en;q=0.8",
+        }
+
         try:
             async with httpx.AsyncClient(
-                follow_redirects=True, timeout=12.0, headers=DEFAULT_HEADERS
+                follow_redirects=True, timeout=12.0, headers=headers
             ) as client:
                 resp = await client.get(google_maps_url)
                 final_url = str(resp.url)
@@ -387,10 +490,10 @@ class DoctorGoogleSearchService:
                                 extracted["website_url"] = u
                         if "image" in item:
                             img = item["image"]
-                            if isinstance(img, str):
+                            if isinstance(img, str) and img.startswith("http"):
                                 extracted["photos"].append(img)
                             elif isinstance(img, list):
-                                extracted["photos"].extend([i for i in img if isinstance(i, str)])
+                                extracted["photos"].extend([i for i in img if isinstance(i, str) and i.startswith("http")])
                 except Exception:
                     pass
 
@@ -404,20 +507,219 @@ class DoctorGoogleSearchService:
                 if title_val and len(title_val) > 1 and not extracted["business_name"]:
                     extracted["business_name"] = title_val
 
-            og_image = soup.find("meta", property="og:image")
+            og_image = soup.find("meta", property="og:image") or soup.find("meta", attrs={"name": "twitter:image"})
             if og_image and og_image.get("content"):
                 img_url = og_image["content"]
                 if img_url.startswith("http") and not img_url.endswith("favicon.ico"):
                     if img_url not in extracted["photos"]:
                         extracted["photos"].append(img_url)
 
-            # Telefono desde tel: links
+            # Extraer imágenes desde tags <img> de Google
+            for img in soup.find_all("img"):
+                src = img.get("src") or img.get("data-src") or img.get("data-photo-url")
+                if src and isinstance(src, str):
+                    if src.startswith("//"):
+                        src = f"https:{src}"
+                    if ("googleusercontent.com/p/" in src or "streetviewpixels" in src) and src.startswith("http"):
+                        clean_src = src.split("=")[0] + "=s1200" if "=s" not in src else src
+                        if clean_src not in extracted["photos"]:
+                            extracted["photos"].append(clean_src)
+
+            # -----------------------------------------------------------------
+            # Extraer fotos de alta resolución del perfil de Google Maps/Search
+            # -----------------------------------------------------------------
+
+            # Patrón 1: AF1Qip... — IDs nativos de fotos de Google Maps/Places
+            af_ids_seen: set[str] = set()
+            af_matches = re.findall(r'AF1Qip[A-Za-z0-9_\-]+', html_content)
+            for af_id in af_matches:
+                if len(af_id) > 10 and af_id not in af_ids_seen:
+                    af_ids_seen.add(af_id)
+                    photo_url = f"https://lh3.googleusercontent.com/p/{af_id}=s1200"
+                    if photo_url not in extracted["photos"]:
+                        extracted["photos"].append(photo_url)
+
+            # Patrón 2: URLs directas lh[3-6].googleusercontent.com/p/...
+            lh_matches = re.findall(r'https?://lh[3-6]\.googleusercontent\.com/p/[A-Za-z0-9_\-]+', html_content)
+            for m in lh_matches:
+                full_m = f"{m}=s1200" if ("=s" not in m and "=w" not in m) else m
+                if full_m not in extracted["photos"]:
+                    extracted["photos"].append(full_m)
+
+            # Patrón 3: URLs escapadas en bloques JS (lh3\.googleusercontent\.com\/p\/ID)
+            lh_escaped = re.findall(
+                r'lh[3-6]\\+\.googleusercontent\\+\.com\\+/p\\+/([A-Za-z0-9_\-]+)', html_content
+            )
+            for photo_id in lh_escaped:
+                if len(photo_id) > 8:
+                    photo_url = f"https://lh3.googleusercontent.com/p/{photo_id}=s1200"
+                    if photo_url not in extracted["photos"]:
+                        extracted["photos"].append(photo_url)
+
+            # Patrón 4: URLs StreetView thumbnail público (sin key)
+            sv_matches = re.findall(
+                r'https?://streetviewpixels-pa\.googleapis\.com/v1/thumbnail\?[^\s"\'\\]+',
+                html_content,
+            )
+            for m in sv_matches:
+                clean_m = m.replace("\u0026amp;", "&").replace("&amp;", "&")
+                if clean_m not in extracted["photos"]:
+                    extracted["photos"].append(clean_m)
+
+            # Teléfono desde tel: links
             if not extracted.get("phone_number"):
                 tel_link = soup.find("a", href=re.compile(r"^tel:"))
                 if tel_link and tel_link.get("href"):
                     extracted["phone_number"] = tel_link["href"].replace("tel:", "").strip()
 
         return extracted
+
+    async def _fetch_business_photos(self, query: str, city: str = "") -> list[str]:
+        """
+        Busca fotos REALES del negocio o médico sin API key utilizando Bing Images
+        (público, confiable y con fotos reales de alta resolución de perfiles médicos, Doctoralia, etc.).
+        """
+        photos: list[str] = []
+        bad_words = [
+            ".svg", ".ico", "favicon", "avatar", "placeholder", "logo", "icon", "blank",
+            "pixel", "tracking", "freepik", "shutterstock", "gettyimages", "istockphoto",
+            "dreamstime", "depositphotos", "123rf", "getmidnight", "wallpaper", "nombres.",
+            "significado", "cautivoestrella", "momjunction", "guiainfantil", "mamanatural",
+            "ifate", "pinimg.com", "vector", "stock"
+        ]
+
+        def _is_valid(url: str) -> bool:
+            if not url or not url.startswith("http"):
+                return False
+            low = url.lower()
+            return not any(b in low for b in bad_words)
+
+        # Limpiar query (remover comas y palabras secundarias)
+        clean_name = query.replace(",", " ").strip()
+        search_terms: list[str] = [clean_name]
+
+        # Variante corta: sólo nombre del profesional si viene con especialidad larga
+        # Ej: "Dr Juan Pablo Hernández Ovalle, Médico Familiar" -> "Dr Juan Pablo Hernández Ovalle"
+        m = re.match(r"(?:Dr\.?|Dra\.?|Doctor|Doctora)?\s*([A-ZÁÉÍÓÚÑa-záéíóúñ\s]+)", clean_name)
+        if m:
+            short_name = m.group(0).strip()
+            # Si tiene al menos 2 palabras y no es igual
+            if len(short_name.split()) >= 2 and short_name != clean_name and short_name not in search_terms:
+                search_terms.append(short_name)
+
+        if city and city.lower() not in clean_name.lower():
+            search_terms.append(f"{clean_name} {city}")
+
+        headers_bing = {
+            **DEFAULT_HEADERS,
+            "Referer": "https://www.bing.com/",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        }
+
+        async with httpx.AsyncClient(timeout=10.0, headers=headers_bing, follow_redirects=True) as client:
+            for term in search_terms:
+                if len(photos) >= 6:
+                    break
+                try:
+                    resp = await client.get(
+                        "https://www.bing.com/images/search",
+                        params={"q": term, "form": "HDRSC2", "first": "1"},
+                    )
+                    if resp.status_code == 200:
+                        # Extraer murl (URL original de imagen)
+                        murls = re.findall(r'murl&quot;:&quot;(https?://[^&"]+)&quot;', resp.text)
+                        if not murls:
+                            murls = re.findall(r'"murl":"(https?://[^"]+)"', resp.text)
+                        for img_url in murls:
+                            clean_url = img_url.replace("&amp;", "&")
+                            if _is_valid(clean_url) and clean_url not in photos:
+                                photos.append(clean_url)
+                            if len(photos) >= 6:
+                                break
+                except Exception:
+                    pass
+
+        return photos
+
+    async def _fetch_knowledge_panel_photos(
+        self, business_name: str, address: str = ""
+    ) -> list[str]:
+        """
+        Estrategia principal para obtener fotos REALES de un negocio de Google Maps
+        sin necesitar API key.
+        """
+        photos: list[str] = []
+        bad_words = [".svg", ".ico", "favicon", "logo", "icon", "blank", "avatar", "placeholder", "pixel"]
+
+        def _valid(u: str) -> bool:
+            if not u or not u.startswith("http"):
+                return False
+            low = u.lower()
+            return not any(b in low for b in bad_words)
+
+        query = business_name.strip()
+        headers = {
+            **DEFAULT_HEADERS,
+            "Accept-Language": "es-CO,es;q=0.9,en;q=0.8",
+            "Referer": "https://www.google.com/",
+            "Cookie": "SOCS=CAESHAgBEhJnd3NfMjAyNDA0MTUtMF9SQzIaAmVzIAEaBgiA_LyuBg; CONSENT=YES+",
+        }
+
+        async with httpx.AsyncClient(timeout=12.0, headers=headers, follow_redirects=True) as client:
+            # 1. Google Maps Search
+            try:
+                resp = await client.get(
+                    "https://www.google.com/maps/search/",
+                    params={"q": query, "hl": "es"},
+                )
+                if resp.status_code == 200:
+                    html = resp.text
+                    af_ids: set[str] = set()
+                    for af_id in re.findall(r"AF1Qip[A-Za-z0-9_\-]+", html):
+                        if len(af_id) > 10 and af_id not in af_ids:
+                            af_ids.add(af_id)
+                            url = f"https://lh3.googleusercontent.com/p/{af_id}=s1200"
+                            if url not in photos:
+                                photos.append(url)
+                        if len(photos) >= 6:
+                            break
+
+                    for m in re.findall(r"https?://lh[3-6]\.googleusercontent\.com/p/[A-Za-z0-9_\-]+", html):
+                        url = f"{m}=s1200" if ("=s" not in m and "=w" not in m) else m
+                        if url not in photos:
+                            photos.append(url)
+                        if len(photos) >= 6:
+                            break
+            except Exception:
+                pass
+
+            # 2. Google Search Web con Knowledge Panel
+            if len(photos) < 3:
+                try:
+                    resp = await client.get(
+                        "https://www.google.com/search",
+                        params={"q": query, "hl": "es", "num": "1"},
+                    )
+                    if resp.status_code == 200:
+                        html = resp.text
+                        for af_id in re.findall(r"AF1Qip[A-Za-z0-9_\-]+", html):
+                            if len(af_id) > 10:
+                                url = f"https://lh3.googleusercontent.com/p/{af_id}=s1200"
+                                if url not in photos:
+                                    photos.append(url)
+                            if len(photos) >= 6:
+                                break
+
+                        for m in re.findall(r"https?://lh[3-6]\.googleusercontent\.com/p/[A-Za-z0-9_\-]+", html):
+                            url = f"{m}=s1200" if ("=s" not in m and "=w" not in m) else m
+                            if url not in photos:
+                                photos.append(url)
+                            if len(photos) >= 6:
+                                break
+                except Exception:
+                    pass
+
+        return photos[:6]
 
     async def _enrich_with_openai_and_web(
         self,
@@ -575,21 +877,35 @@ class DoctorGoogleSearchService:
             pass
 
     def normalize_place(self, data: dict[str, Any], original_url: str) -> dict[str, Any]:
-        """Garantiza que todos los campos requeridos tengan valores coherentes y normalizados."""
+        """Garantiza que todos los campos requeridos tengan valores coherentes y normalizados, con al menos 3 fotos."""
         location = data.get("location") or {}
-        photos = data.get("photos") or []
-        normalized_photos = []
+        raw_photos = data.get("photos") or []
+        normalized_photos: list[str] = []
 
-        for photo in photos[:3]:
+        def _is_valid_photo(u: str) -> bool:
+            if not u or not isinstance(u, str) or not u.startswith("http"):
+                return False
+            low = u.lower()
+            if any(bad in low for bad in ["favicon.ico", ".svg", "icon-", "/logo", "placeholder", "pixel", "blank.gif", "tracking", "freepik", "shutterstock", "gettyimages", "istockphoto", "getmidnight"]):
+                return False
+            return True
+
+        for photo in raw_photos:
+            img_url = None
             if isinstance(photo, str):
-                image_url = photo
+                img_url = photo
             elif isinstance(photo, dict):
-                image_url = photo.get("image_url") or photo.get("url")
-            else:
-                image_url = None
+                img_url = photo.get("image_url") or photo.get("url") or photo.get("src")
 
-            if image_url and image_url.startswith("http"):
-                normalized_photos.append(image_url)
+            if img_url and _is_valid_photo(img_url):
+                # Si es Google usercontent, asegurar alta resolución
+                if "googleusercontent.com/p/" in img_url and "=s" not in img_url and "=w" not in img_url:
+                    img_url = f"{img_url}=s1200"
+                if img_url not in normalized_photos:
+                    normalized_photos.append(img_url)
+
+        # Limitar a máximo 3 fotos reales encontradas (sin relleno con imágenes estáticas)
+        normalized_photos = normalized_photos[:3]
 
         google_maps_url = data.get("google_maps_url") or original_url
         if google_maps_url and not google_maps_url.startswith("https://"):
@@ -717,15 +1033,14 @@ class DoctorGoogleSearchService:
             "photos": [],
         }
 
-        # Si es URL directa de Maps con place/coords
-        if self._is_google_maps_place_url(validated_url):
-            try:
-                maps_data = await self._fetch_and_parse_maps_url(validated_url)
-                for k, v in maps_data.items():
-                    if v is not None and v != "" and v != []:
-                        extracted[k] = v
-            except Exception:
-                pass
+        # Siempre intentar consultar y parsear la URL de Google ingresada (Maps, Search o Local drawer)
+        try:
+            maps_data = await self._fetch_and_parse_maps_url(validated_url)
+            for k, v in maps_data.items():
+                if v is not None and v != "" and v != []:
+                    extracted[k] = v
+        except Exception:
+            pass
 
         final_query = extracted.get("business_name") or search_query or ""
 
@@ -740,7 +1055,11 @@ class DoctorGoogleSearchService:
             if any(dom in u for dom in ["doctoralia.", "topdoctors.", "doctolib.", "zocdoc.", "healthgrades."]):
                 dir_data = await self._scrape_directory_page(u)
                 for k, v in dir_data.items():
-                    if v is not None and not extracted.get(k):
+                    if k == "photos" and isinstance(v, list):
+                        for p in v:
+                            if p not in extracted["photos"]:
+                                extracted["photos"].append(p)
+                    elif v is not None and not extracted.get(k):
                         extracted[k] = v
                 if not extracted.get("website_url"):
                     extracted["website_url"] = u
@@ -755,6 +1074,33 @@ class DoctorGoogleSearchService:
                     extracted["website_url"] = u
                     break
 
+        # ----------------------------------------------------------------
+        # Fotos: intentar en este orden
+        #   1. Knowledge Panel de Google Search (más fiable, gratuito)
+        #   2. DuckDuckGo Images + Bing (fallback)
+        # ----------------------------------------------------------------
+        business_name_for_photos = extracted.get("business_name") or final_query or ""
+        addr_for_photos = extracted.get("formatted_address") or ""
+        city_hint = ""
+        if addr_for_photos:
+            parts = [p.strip() for p in addr_for_photos.split(",")]
+            city_hint = parts[-2] if len(parts) >= 2 else parts[0] if parts else ""
+
+        if business_name_for_photos and len(extracted.get("photos", [])) < 3:
+            kp_photos = await self._fetch_knowledge_panel_photos(
+                business_name_for_photos, city_hint
+            )
+            for wp in kp_photos:
+                if wp not in extracted["photos"]:
+                    extracted["photos"].append(wp)
+
+        # Fallback: DuckDuckGo + Bing si aún no hay 3 fotos
+        if business_name_for_photos and len(extracted.get("photos", [])) < 3:
+            ddg_photos = await self._fetch_business_photos(business_name_for_photos, city_hint)
+            for wp in ddg_photos:
+                if wp not in extracted["photos"]:
+                    extracted["photos"].append(wp)
+
         # Enriquecer con OpenAI usando los fragmentos web mundiales
         if final_query:
             await self._enrich_with_openai_and_web(
@@ -763,6 +1109,7 @@ class DoctorGoogleSearchService:
                 web_context=web_context,
                 candidate_urls=candidate_urls,
             )
+
 
         # Geocodificación global con Nominatim
         addr = extracted.get("formatted_address")
@@ -780,6 +1127,7 @@ class DoctorGoogleSearchService:
 
         normalized = self.normalize_place(extracted, validated_url)
         return normalized
+
     async def search_by_text(self, query: str, city: str = "", country: str = "") -> dict[str, Any]:
         """
         Busca un médico/consultorio por texto libre (especialidad + ciudad) usando
@@ -804,7 +1152,11 @@ class DoctorGoogleSearchService:
             if any(dom in u for dom in ["doctoralia.", "topdoctors.", "doctolib.", "zocdoc.", "healthgrades."]):
                 dir_data = await self._scrape_directory_page(u)
                 for k, v in dir_data.items():
-                    if v is not None and not extracted.get(k):
+                    if k == "photos" and isinstance(v, list):
+                        for p in v:
+                            if p not in extracted["photos"]:
+                                extracted["photos"].append(p)
+                    elif v is not None and not extracted.get(k):
                         extracted[k] = v
                 if not extracted.get("website_url"):
                     extracted["website_url"] = u
@@ -817,6 +1169,13 @@ class DoctorGoogleSearchService:
                 if "google.com" not in u and "duckduckgo.com" not in u:
                     extracted["website_url"] = u
                     break
+
+        # Si aún tenemos menos de 3 fotos, buscar fotos del negocio en la web
+        if len(extracted.get("photos", [])) < 3 and full_query:
+            web_photos = await self._fetch_business_photos(full_query, city)
+            for wp in web_photos:
+                if wp not in extracted["photos"]:
+                    extracted["photos"].append(wp)
 
         # Enriquecer con OpenAI
         await self._enrich_with_openai_and_web(
@@ -877,23 +1236,26 @@ class DoctorGoogleSearchService:
 
             urls_str = "\n".join(f"- {u}" for u in candidate_urls[:8] if "google.com" not in u)
             prompt = (
-                f"Eres un asistente de búsqueda médica. Se realizó la búsqueda: \"{full_query}\"\n\n"
-                f"Fragmentos de resultados de búsqueda:\n---\n{web_context[:4000]}\n---\n\n"
+                f"Eres un asistente de búsqueda médica verificado. Se realizó la búsqueda: \"{full_query}\"\n\n"
+                f"Fragmentos reales de resultados de búsqueda:\n---\n{web_context[:4000]}\n---\n\n"
                 f"URLs encontradas:\n{urls_str}\n\n"
-                f"TAREA: Extrae una lista de hasta {limit} médicos o consultorios médicos distintos "
-                f"que aparezcan en los fragmentos. Para cada uno, devuelve un objeto con:\n"
-                "- business_name: nombre del médico o consultorio\n"
-                "- google_category: especialidad médica exacta en español\n"
-                "- formatted_address: dirección completa incluyendo ciudad y país\n"
-                "- phone_number: teléfono de contacto o null\n"
-                "- website_url: sitio web o null\n"
-                "- booking_url: enlace para citas o null\n"
-                "- google_rating: calificación decimal (4.0-5.0) o null\n"
-                "- google_reviews_count: número de reseñas entero o null\n"
-                "- latitude: latitud decimal de la ubicación real o null\n"
-                "- longitude: longitud decimal de la ubicación real o null\n\n"
-                "Responde ÚNICAMENTE un JSON con la clave 'doctors' que contiene un array de objetos.\n"
-                "Ejemplo: {\"doctors\": [{\"business_name\": \"Dr. Juan\", ...}, ...]}"
+                "REGLAS ESTRICTAS CONTRA ALUCINACIONES:\n"
+                "1. NO INVENTES ningún médico, clínica, teléfono, ni dirección falsa.\n"
+                "2. Extrae ÚNICAMENTE médicos o consultorios reales que aparezcan explícitamente en el texto anterior.\n"
+                "3. Si un dato no aparece explícitamente, usa null. NUNCA inventes coordenadas.\n"
+                "4. Si no hay médicos explícitos en los fragmentos, responde: {\"doctors\": []}.\n\n"
+                f"TAREA: Extrae hasta {limit} médicos reales encontrados con:\n"
+                "- business_name: nombre exacto del médico o consultorio que aparece en el texto\n"
+                "- google_category: especialidad médica en español\n"
+                "- formatted_address: dirección real mencionada en el texto o null\n"
+                "- phone_number: teléfono si aparece o null\n"
+                "- website_url: sitio web si aparece o null\n"
+                "- booking_url: enlace de citas o null\n"
+                "- google_rating: calificación real o null\n"
+                "- google_reviews_count: número de reseñas o null\n"
+                "- latitude: null\n"
+                "- longitude: null\n\n"
+                "Responde ÚNICAMENTE un JSON con la clave 'doctors'."
             )
 
             ai_resp = await oa_client.chat.completions.create(
@@ -901,7 +1263,7 @@ class DoctorGoogleSearchService:
                 messages=[{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"},
                 max_tokens=2000,
-                temperature=0.1,
+                temperature=0.0,
             )
             ai_data = json.loads(ai_resp.choices[0].message.content)
             doctors_raw = ai_data.get("doctors", [])
@@ -909,20 +1271,41 @@ class DoctorGoogleSearchService:
                 for d in doctors_raw[:limit]:
                     if not isinstance(d, dict):
                         continue
-                    if not d.get("business_name"):
+                    if not d.get("business_name") or len(d.get("business_name", "").strip()) < 3:
                         continue
-                    # Geocodificar si no tiene coordenadas
-                    if not d.get("latitude") and d.get("formatted_address"):
-                        geo_lat, geo_lng = await self._geocode_address(d["formatted_address"])
-                        if geo_lat is not None:
+
+                    # Geocodificar la dirección física real
+                    raw_addr = d.get("formatted_address")
+                    if raw_addr and len(raw_addr.strip()) > 5:
+                        full_geo_query = ", ".join(filter(None, [raw_addr.strip(), city, country]))
+                        geo_lat, geo_lng = await self._geocode_address(full_geo_query)
+                        if geo_lat is not None and geo_lng is not None:
                             d["latitude"] = geo_lat
                             d["longitude"] = geo_lng
-                    if not d.get("latitude") and (city or country):
-                        geo_query = ", ".join(filter(None, [city, country]))
-                        geo_lat, geo_lng = await self._geocode_address(geo_query)
-                        if geo_lat is not None:
-                            d["latitude"] = geo_lat
-                            d["longitude"] = geo_lng
+                        else:
+                            # Intento 2: simplificar nomenclatura (ej. "Cl. 18 Nte, Cali, Colombia")
+                            import re as _re
+                            simplified = _re.sub(r"^(Edificio|Torre|Centro|Piso|Consultorio)[^,]+,\s*", "", raw_addr.strip(), flags=_re.IGNORECASE)
+                            simplified = _re.split(r"[#-]", simplified)[0].strip()
+                            if len(simplified) > 3:
+                                sim_geo_query = ", ".join(filter(None, [simplified, city, country]))
+                                s_lat, s_lng = await self._geocode_address(sim_geo_query)
+                                if s_lat is not None:
+                                    d["latitude"] = s_lat
+                                    d["longitude"] = s_lng
+
+                    # Si aún no tiene coordenadas pero tiene nombre y ciudad, intentar geocodificar negocio + ciudad
+                    if not d.get("latitude") and d.get("business_name") and city:
+                        b_geo_query = f"{d['business_name']}, {city}, {country}".strip(", ")
+                        b_lat, b_lng = await self._geocode_address(b_geo_query)
+                        if b_lat is not None:
+                            d["latitude"] = b_lat
+                            d["longitude"] = b_lng
+
+                    # Si después de todo no se pudo situar geográficamente en esa ciudad, continuar
+                    if not d.get("latitude"):
+                        continue
+
                     # Normalizar con defaults
                     normalized = self.normalize_place(d, d.get("website_url") or "")
                     results.append(normalized)

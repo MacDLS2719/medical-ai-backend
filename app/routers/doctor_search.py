@@ -45,6 +45,7 @@ async def search_doctors(
             longitude=payload.longitude,
             radius_km=payload.radius_km,
             limit=payload.limit,
+            search_mode=payload.search_mode,
         )
 
         results_list = search_data.get("results", [])
@@ -53,13 +54,22 @@ async def search_doctors(
             for item in results_list
         ]
 
+        actual_mode = search_data.get("search_mode", payload.search_mode)
+        count = len(validated_results)
+        msg = (
+            f"Se encontraron {count} especialistas en la base de datos."
+            if actual_mode == "database"
+            else f"Búsqueda web completada: {count} especialistas encontrados y guardados."
+        )
+
         return DoctorSearchResponse(
             success=True,
-            total=len(validated_results),
+            total=count,
+            search_mode=actual_mode,
             center_latitude=search_data.get("center_latitude"),
             center_longitude=search_data.get("center_longitude"),
             results=validated_results,
-            message="Búsqueda completada correctamente.",
+            message=msg,
         )
 
     except ValueError as exc:
@@ -74,3 +84,16 @@ async def search_doctors(
             status_code=500,
             detail="No fue posible completar la búsqueda de médicos.",
         ) from exc
+
+
+@router.post(
+    "/external",
+    response_model=DoctorSearchResponse,
+    summary="Buscar médicos en la web externa y Google Maps (Mivor AI) y guardar en base de datos",
+)
+async def search_doctors_external(
+    payload: DoctorSearchRequest,
+    db: Session = Depends(get_db),
+) -> DoctorSearchResponse:
+    payload.search_mode = "external"
+    return await search_doctors(payload, db)

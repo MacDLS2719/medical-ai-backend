@@ -1,12 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime
 from typing import List, Optional
 
 from app.core.database import get_db
 from app.models.doctor_review import DoctorReview
 from app.models.patient import Patient
+from app.models.doctor import Doctor
 from app.models.user import User
 
 
@@ -34,6 +35,23 @@ class ReviewsSummaryResponse(BaseModel):
     reviews: List[ReviewResponse]
 
 
+class CreateReviewRequest(BaseModel):
+    doctor_id: int
+    patient_id: int
+    rating: int = Field(..., ge=1, le=5)
+    comment: Optional[str] = None
+
+
+class PatientReviewResponse(BaseModel):
+    id: int
+    rating: int
+    comment: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 @router.get("/{doctor_id}", response_model=ReviewsSummaryResponse)
 def get_doctor_reviews(
     doctor_id: int,
@@ -43,7 +61,7 @@ def get_doctor_reviews(
         Patient, DoctorReview.patient_id == Patient.id
     ).filter(
         DoctorReview.doctor_id == doctor_id,
-        DoctorReview.is_published == True
+        DoctorReview.is_verified == True
     ).order_by(DoctorReview.created_at.desc()).all()
 
     total_rating = 0
@@ -76,3 +94,62 @@ def get_doctor_reviews(
         "average_rating": average_rating,
         "reviews": formatted_reviews
     }
+
+
+@router.post("/", response_model=PatientReviewResponse, status_code=201)
+def create_or_update_review(
+    body: CreateReviewRequest,
+    db: Session = Depends(get_db)
+):
+    """Crea o actualiza la reseña que un paciente deja sobre un médico."""
+
+    # Verificar que el doctor existe
+    doctor = db.query(Doctor).filter(Doctor.id == body.doctor_id).first()
+    if not doctor:
+        raise HTTPException(status_code=404, detail="Médico no encontrado")
+
+    # Verificar que el paciente existe
+    patient = db.query(Patient).filter(Patient.id == body.patient_id).first()
+    if not patient:
+        raise HTTPException(status_code=404, detail="Paciente no encontrado")
+
+    # ¿Ya existe una reseña de este paciente para este médico?
+    existing = db.query(DoctorReview).filter(
+        DoctorReview.doctor_id == body.doctor_id,
+        DoctorReview.patient_id == body.patient_id,
+    ).first()
+
+    if existing:
+        existing.rating = body.rating
+        existing.comment = body.comment
+        existing.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(existing)
+        return existing
+    else:
+        review = DoctorReview(
+            doctor_id=body.doctor_id,
+            patient_id=body.patient_id,
+            rating=body.rating,
+            comment=body.comment,
+            status="pending",
+            is_verified=False,
+        )
+        db.add(review)
+        db.commit()
+        db.refresh(review)
+        return review
+
+
+@router.get("/patient/{patient_id}/doctor/{doctor_id}", response_model=Optional[PatientReviewResponse])
+def get_patient_review_for_doctor(
+    patient_id: int,
+    doctor_id: int,
+    db: Session = Depends(get_db)
+):
+    """Devuelve la reseña (si existe) que un paciente dejó para un médico."""
+    review = db.query(DoctorReview).filter(
+        DoctorReview.patient_id == patient_id,
+        DoctorReview.doctor_id == doctor_id,
+    ).first()
+    return review

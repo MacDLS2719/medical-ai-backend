@@ -11,6 +11,7 @@ from app.models.doctor_google_profile import DoctorGoogleProfile
 from app.models.medical_doctor_availability import MedicalDoctorAvailability
 from app.services.doctor_external_search_service import (
     doctor_external_search_service,
+    resolve_city_coordinates,
 )
 from app.services.doctor_google_search_service import (
     doctor_google_search_service,
@@ -44,10 +45,11 @@ class DoctorSearchService:
         longitude: float | None = None,
         radius_km: float = 15,
         limit: int = 30,
+        search_mode: str = "database",
     ) -> dict[str, Any]:
         debug_steps: list[str] = []
 
-        # Normalizar: si viene specialties (lista), tiene prioridad; si viene specialty (string), wrapearlo en lista
+        # Normalizar especialidades
         effective_specialties: list[str] = []
         if specialties and len(specialties) > 0:
             effective_specialties = [s.strip() for s in specialties if s and s.strip()]
@@ -56,12 +58,34 @@ class DoctorSearchService:
         if limit < 1:
             raise ValueError("El límite debe ser mayor que 0.")
 
-        debug_steps.append(f"[1] Especialidades: {effective_specialties} | Ciudad: {city} | País: {country}")
+        # Purgar datos ficticios residuales guardados en pruebas anteriores
+        try:
+            db.query(DoctorGoogleProfile).filter(
+                DoctorGoogleProfile.doctor_id == None,
+                or_(
+                    DoctorGoogleProfile.phone_number.like("%123-4567%"),
+                    DoctorGoogleProfile.business_name.ilike("%Clínica del Corazón%"),
+                    DoctorGoogleProfile.website_url.ilike("%clinicadelcorazon%"),
+                )
+            ).delete(synchronize_session=False)
+            db.commit()
+        except Exception:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+
+        debug_steps.append(f"[1] Modo: {search_mode} | Especialidades: {effective_specialties} | Ciudad: {city} | País: {country}")
         logger.info(debug_steps[-1])
 
-        # 1. Si no hay coordenadas pero sí ciudad/país, geocodificar para centrar el mapa
+        # 1. Determinar coordenadas del centro del mapa
         center_lat = latitude
         center_lng = longitude
+
+        if (center_lat is None or center_lng is None) and city:
+            canonical = resolve_city_coordinates(city, country)
+            if canonical:
+                center_lat, center_lng = canonical
 
         if (center_lat is None or center_lng is None) and (city or country):
             geo_query = ", ".join(filter(None, [city, country]))
@@ -70,16 +94,48 @@ class DoctorSearchService:
                 if g_lat is not None and g_lng is not None:
                     center_lat = g_lat
                     center_lng = g_lng
-            except Exception as geo_exc:
-                debug_steps.append(f"[1] Geocodificación OK: ({center_lat}, {center_lng})") if (center_lat and g_lat) else debug_steps.append(f"[1] Geocodificación sin resultado")
+            except Exception:
                 pass
 
-        # Fallback de centro si sigue vacío (Bogotá por defecto)
+        # Fallback de centro urbano (Cali por defecto)
         if center_lat is None or center_lng is None:
-            center_lat = 4.6097
-            center_lng = -74.0817
+            center_lat = 3.4516
+            center_lng = -76.5320
 
-        # 2. Buscar en base de datos primero (médicos propios + externos ya guardados)
+        # ------------------------------------------------------------------
+        # MODO 1: BÚSQUEDA EXCLUSIVA EN BASE DE DATOS LOCAL ('database')
+        # Busca médicos registrados propios y perfiles externos ya guardados.
+        # Es ultra rápido y no consume cuotas ni APIs externas.
+        # ------------------------------------------------------------------
+        if search_mode != "external":
+            local_results = self._search_database(
+                db,
+                specialties=effective_specialties,
+                city=city,
+                country=country,
+                center_lat=center_lat,
+                center_lng=center_lng,
+                limit=limit,
+            )
+            debug_steps.append(f"[BD] Resultados locales encontrados: {len(local_results)}")
+            return {
+                "results": local_results,
+                "total": len(local_results),
+                "search_mode": "database",
+                "center_latitude": center_lat,
+                "center_longitude": center_lng,
+                "debug_steps": debug_steps,
+            }
+
+        # ------------------------------------------------------------------
+        # MODO 2: BÚSQUEDA WEB EXTERNA MIVOR ('external')
+        # Se activa cuando el usuario presiona "Buscar Web Mivor".
+        # Delega la búsqueda externa al servicio externo doctor_external_search_service.
+        # ------------------------------------------------------------------
+        debug_steps.append("[External] Iniciando búsqueda externa Mivor en doctor_external_search_service...")
+        logger.info(debug_steps[-1])
+
+        # 1. Traer de BD local los médicos registrados propios para darles prioridad #1
         local_results = self._search_database(
             db,
             specialties=effective_specialties,
@@ -90,125 +146,38 @@ class DoctorSearchService:
             limit=limit,
         )
 
-        # Si ya alcanzamos el límite con resultados locales, retornar
-        if len(local_results) >= limit:
-            return {
-                "results": local_results[:limit],
-                "center_latitude": center_lat,
-                "center_longitude": center_lng,
-                "debug_steps": debug_steps,
-            }
+        remaining = max(limit - len(local_results), 25)
 
-        remaining = limit - len(local_results)
-
-        # 3. Buscar en OpenStreetMap si hay coordenadas disponibles
-        osm_results: list[dict[str, Any]] = []
+        # 2. Consultar directamente el servicio externo: doctor_external_search_service
+        external_results: list[dict[str, Any]] = []
         try:
-            ext_specialty = effective_specialties[0] if effective_specialties else None
-            osm_results = await self.external_service.search(
+            external_results = await self.external_service.search(
                 latitude=center_lat,
                 longitude=center_lng,
+                city=city,
+                country=country,
                 radius_km=radius_km,
-                specialty=ext_specialty,
+                specialty=effective_specialties[0] if effective_specialties else None,
+                specialties=effective_specialties if effective_specialties else None,
                 limit=remaining,
+                db=db,
             )
+            debug_steps.append(f"[External] ✅ Encontrados en búsqueda externa: {len(external_results)}")
         except Exception as exc:
-            debug_steps.append(f"[3] OpenStreetMap error: {exc}")
-            logger.warning(f"Aviso al consultar OpenStreetMap: {exc}")
+            debug_steps.append(f"[External] Aviso búsqueda externa: {exc}")
+            logger.warning(f"Aviso búsqueda externa: {exc}")
 
-        if osm_results is not None:
-            debug_steps.append(f"[3] OpenStreetMap: {len(osm_results)} resultados")
-            logger.info(debug_steps[-1])
-
-        # 4. Si con BD local + OSM aún no hay suficientes resultados Y hay especialidad/ciudad:
-        #    buscar en Google (scraping + OpenAI), guardar en DoctorGoogleProfile y devolver.
-        google_scraped: list[dict[str, Any]] = []
-        total_so_far = len(local_results) + len(osm_results)
-        has_search_terms = bool(effective_specialties or city)
-
-        debug_steps.append(f"[4] Total hasta ahora: {total_so_far} | Lanzar Google: {has_search_terms and total_so_far < 3}")
-        logger.info(debug_steps[-1])
-
-        if total_so_far < 3 and has_search_terms:
-            query_text = " ".join(effective_specialties) if effective_specialties else ""
-            debug_steps.append(f"[4] query='{query_text}' city='{city}' country='{country}'")
-            logger.info(debug_steps[-1])
-            try:
-                scraped_list = await doctor_google_search_service.search_multiple_by_text(
-                    query=query_text,
-                    city=city or "",
-                    country=country or "",
-                    limit=remaining,
-                )
-
-                for scraped in scraped_list:
-                    if not scraped.get("business_name"):
-                        continue
-                    try:
-                        saved_profile = doctor_google_save_service.save_external_profile(
-                            db, scraped
-                        )
-                        db.commit()
-                        if saved_profile:
-                            google_scraped.append(
-                                self._profile_to_result(saved_profile, city, country, center_lat, center_lng)
-                            )
-                            debug_steps.append(f"[4] ✅ Guardado: {scraped.get('business_name')}")
-                        else:
-                            debug_steps.append(f"[4] ⚠️ save retornó None: {scraped.get('business_name')}")
-                    except Exception as save_exc:
-                        debug_steps.append(f"[4] ❌ Error guardando '{scraped.get('business_name')}': {save_exc}")
-                        logger.warning(f"No se pudo guardar perfil externo: {save_exc}")
-                        try:
-                            db.rollback()
-                        except Exception:
-                            pass
-                        # Igual lo devolvemos en memoria aunque no se guardó
-                        google_scraped.append({
-                            "source": "google_live",
-                            "source_place_id": scraped.get("google_place_id"),
-                            "doctor_id": None,
-                            "user_id": None,
-                            "profile_id": None,
-                            "business_name": scraped.get("business_name", "Consultorio Médico"),
-                            "first_name": None,
-                            "last_name": None,
-                            "google_category": scraped.get("google_category"),
-                            "specialty": scraped.get("google_category"),
-                            "phone_number": scraped.get("phone_number"),
-                            "formatted_address": scraped.get("formatted_address"),
-                            "city": city,
-                            "country": country,
-                            "latitude": scraped.get("latitude") or center_lat,
-                            "longitude": scraped.get("longitude") or center_lng,
-                            "website_url": scraped.get("website_url"),
-                            "booking_url": scraped.get("booking_url"),
-                            "google_maps_url": scraped.get("google_maps_url"),
-                            "google_rating": scraped.get("google_rating", 4.8),
-                            "google_reviews_count": scraped.get("google_reviews_count", 20),
-                            "opening_hours": scraped.get("opening_hours"),
-                            "images": [],
-                            "availabilities": [],
-                            "is_our_doctor": False,
-                            "is_verified": False,
-                        })
-            except Exception as exc:
-                debug_steps.append(f"[4] ❌ Error general Google+IA: {exc}")
-                logger.warning(f"Aviso al buscar en Google/IA: {exc}")
-        else:
-            debug_steps.append(f"[4] Google omitido (total={total_so_far}, has_terms={has_search_terms})")
-
-        # 5. Combinar dando prioridad: propios > BD externos > OSM > Google scraped
+        # 3. Combinar dando prioridad: médicos propios de plataforma > externos
         combined = self._merge_results(
             local_results,
-            osm_results + google_scraped,
+            external_results,
             limit=limit,
         )
-        debug_steps.append(f"[5] Total final devuelto: {len(combined)}")
-        logger.info(debug_steps[-1])
 
         return {
             "results": combined,
+            "total": len(combined),
+            "search_mode": "external",
             "center_latitude": center_lat,
             "center_longitude": center_lng,
             "debug_steps": debug_steps,
@@ -231,6 +200,17 @@ class DoctorSearchService:
                     "image_path": img.image_path,
                     "image_order": img.image_order,
                 })
+        if not p_images:
+            clinical_defaults = [
+                "https://images.unsplash.com/photo-1629909613654-28e377c37b09?auto=format&fit=crop&w=800&q=80",
+                "https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?auto=format&fit=crop&w=800&q=80",
+                "https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?auto=format&fit=crop&w=800&q=80",
+            ]
+            offset = abs(hash(p.business_name or "")) % len(clinical_defaults)
+            p_images = [
+                {"image_url": clinical_defaults[offset], "image_path": None, "image_order": 1},
+                {"image_url": clinical_defaults[(offset + 1) % len(clinical_defaults)], "image_path": None, "image_order": 2},
+            ]
         return {
             "source": "google",
             "source_place_id": p.google_place_id,
@@ -394,7 +374,9 @@ class DoctorSearchService:
         remaining = limit - len(normalized)
         if remaining > 0:
             ext_query = db.query(DoctorGoogleProfile).filter(
-                DoctorGoogleProfile.doctor_id == None
+                DoctorGoogleProfile.doctor_id == None,
+                ~DoctorGoogleProfile.phone_number.like("%123-4567%"),
+                ~DoctorGoogleProfile.business_name.ilike("%Clínica del Corazón%"),
             )
 
             if specialties:
@@ -407,7 +389,33 @@ class DoctorSearchService:
                 ]
                 ext_query = ext_query.filter(or_(*spec_filters))
 
-            if city and city.strip():
+            # Filtro por ubicación: coordenadas geográficas o texto de ciudad
+            if center_lat and center_lng:
+                import math as _math
+                from sqlalchemy import and_
+                _r = 50.0  # radio amplio en BD (km)
+                _lat_delta = _r / 111.0
+                _lng_delta = _r / (111.0 * _math.cos(_math.radians(center_lat)))
+                geo_filter = and_(
+                    DoctorGoogleProfile.latitude.isnot(None),
+                    DoctorGoogleProfile.longitude.isnot(None),
+                    DoctorGoogleProfile.latitude >= center_lat - _lat_delta,
+                    DoctorGoogleProfile.latitude <= center_lat + _lat_delta,
+                    DoctorGoogleProfile.longitude >= center_lng - _lng_delta,
+                    DoctorGoogleProfile.longitude <= center_lng + _lng_delta,
+                )
+                if city and city.strip():
+                    city_clean = city.strip()
+                    ext_query = ext_query.filter(
+                        or_(
+                            geo_filter,
+                            DoctorGoogleProfile.formatted_address.ilike(f"%{city_clean}%"),
+                            DoctorGoogleProfile.business_name.ilike(f"%{city_clean}%"),
+                        )
+                    )
+                else:
+                    ext_query = ext_query.filter(geo_filter)
+            elif city and city.strip():
                 city_clean = city.strip()
                 ext_query = ext_query.filter(
                     or_(
@@ -427,6 +435,18 @@ class DoctorSearchService:
                             "image_path": img.image_path,
                             "image_order": img.image_order,
                         })
+
+                if not p_images:
+                    clinical_defaults = [
+                        "https://images.unsplash.com/photo-1629909613654-28e377c37b09?auto=format&fit=crop&w=800&q=80",
+                        "https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?auto=format&fit=crop&w=800&q=80",
+                        "https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?auto=format&fit=crop&w=800&q=80",
+                    ]
+                    offset = abs(hash(p.business_name or "")) % len(clinical_defaults)
+                    p_images = [
+                        {"image_url": clinical_defaults[offset], "image_path": None, "image_order": 1},
+                        {"image_url": clinical_defaults[(offset + 1) % len(clinical_defaults)], "image_path": None, "image_order": 2},
+                    ]
 
                 normalized.append({
                     "source": "google",

@@ -101,6 +101,10 @@ REGLA CRÍTICA Y OBLIGATORIA PARA TODAS LAS RESPUESTAS:
 Sin importar lo que el usuario pregunte, y sin importar si pudiste resolver su duda o no, DEBES incluir siempre y obligatoriamente el siguiente texto exacto al final de todas tus respuestas:
 
 "Si necesitas más ayuda o información, puedes contactar con nuestro servicio de atención al cliente:
-📞 Teléfono: +595 981 123 456
 ✉️ Correo: soporte@mivor.com"
 """
+
+SUPPORT_CONTACT_FOOTER = (
+    "Si necesitas más ayuda o información, puedes contactar con nuestro servicio de atención al cliente:\n"
+    "✉️ Correo: soporte@mivor.com"
+)

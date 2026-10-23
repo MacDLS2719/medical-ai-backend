@@ -34,6 +34,10 @@ class DoctorSearchRequest(BaseModel):
 
     radius_km: float = Field(default=15, gt=0, le=50)
     limit: int = Field(default=30, ge=1, le=100)
+    search_mode: str = Field(
+        default="database",
+        description="'database' busca solo en BD (rápido). 'external' busca en Google/web con Mivor y guarda en BD.",
+    )
 
 
 class DoctorSearchImageResponse(BaseModel):
@@ -91,6 +95,7 @@ class DoctorSearchResponse(BaseModel):
 
     success: bool = True
     total: int = 0
+    search_mode: str = "database"
     center_latitude: float | None = None
     center_longitude: float | None = None
     results: list[DoctorSearchResult] = Field(default_factory=list)

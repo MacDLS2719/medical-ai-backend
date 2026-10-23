@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from fastapi import (
     APIRouter,
@@ -39,7 +40,7 @@ from app.models.doctor_subscription import DoctorSubscription
 from app.services.cloudinary_service import cloudinary_service
 from app.services.doctor_google_save_service import doctor_google_save_service
 
-
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/doctor-profile",
@@ -189,6 +190,8 @@ def register_doctor(
         website=data.website,
         professional_description=data.professional_description,
         consultation_phone=data.consultation_phone,
+        languages=data.languages if isinstance(data.languages, list) else ([data.languages] if data.languages else None),
+        insurance_company=data.insurance_company,
         data_policy_accepted=True,
         data_policy_accepted_at=datetime.utcnow(),
         is_active=True,
@@ -316,6 +319,8 @@ def register_free_doctor(
         linkgoogle=data.linkgoogle,
         specialty=data.specialty,
         phone=data.phone,
+        languages=data.languages if isinstance(data.languages, list) else ([data.languages] if data.languages else None),
+        insurance_company=data.insurance_company,
         data_policy_accepted=True,
         data_policy_accepted_at=datetime.utcnow(),
         is_active=True,
@@ -404,6 +409,34 @@ def register_free_doctor(
             db.commit()
         except Exception as e:
             print("Error guardando perfil de Google al registrar médico free:", e)
+
+    # 8. Si se envió certificado o tarjeta profesional, guardar en Cloudinary y DoctorMedia
+    if getattr(data, "certificate_base64", None):
+        try:
+            cert_folder = f"doctors/doctor_{new_doctor.id}"
+            upload_res = cloudinary_service.upload_base64_file(
+                base64_data=data.certificate_base64,
+                folder=cert_folder,
+                resource_type="auto"
+            )
+            cert_url = upload_res.get("secure_url") or upload_res.get("file_url")
+            if cert_url:
+                new_media = DoctorMedia(
+                    doctor_id=new_doctor.id,
+                    media_type="certificate",
+                    file_url=cert_url,
+                    file_name=data.certificate_filename or "tarjeta_profesional.jpg",
+                    mime_type=data.certificate_mime_type or upload_res.get("mime_type") or "image/jpeg",
+                    is_active=True,
+                )
+                db.add(new_media)
+                new_doctor.professional_registration_certificate_url = cert_url
+                db.commit()
+                db.refresh(new_media)
+                db.refresh(new_doctor)
+        except Exception as e:
+            logger.error(f"Error guardando certificado del doctor en DoctorMedia: {e}", exc_info=True)
+            db.rollback()
 
     return get_doctor_profile(
         current_user=new_user,
@@ -552,6 +585,8 @@ def get_doctor_profile(
 
         "consultation_phone": doctor.consultation_phone,
         "website": doctor.website,
+        "languages": doctor.languages,
+        "insurance_company": doctor.insurance_company,
 
         # --------------------------------------------------
         # POLÍTICA DE DATOS Y SUSCRIPCIÓN

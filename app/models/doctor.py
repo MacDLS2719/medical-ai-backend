@@ -12,6 +12,7 @@ from sqlalchemy import (
     Text,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -214,6 +215,16 @@ class Doctor(Base):
         nullable=True
     )
 
+    languages: Mapped[list[str] | None] = mapped_column(
+        JSONB,
+        nullable=True
+    )
+
+    insurance_company: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True
+    )
+
     # ==========================================================
     # POLÍTICA DE TRATAMIENTO DE DATOS
     # ==========================================================
@@ -357,4 +368,3 @@ class Doctor(Base):
         uselist=False,
         cascade="all, delete-orphan",
     )
-

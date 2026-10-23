@@ -170,9 +170,19 @@ def save_google_profile(
                     pass
 
         db.commit()
+        db.expire(profile)
         db.refresh(profile)
 
-        return DoctorGoogleProfileResponse.model_validate(profile)
+        saved_imgs = (
+            db.query(DoctorGoogleImage)
+            .filter(DoctorGoogleImage.google_profile_id == profile.id)
+            .order_by(DoctorGoogleImage.image_order)
+            .all()
+        )
+        resp = DoctorGoogleProfileResponse.model_validate(profile)
+        resp.images = saved_imgs
+        resp.photos = [img.image_url for img in saved_imgs if img.image_url]
+        return resp
 
     except ValueError as exc:
         db.rollback()
@@ -194,11 +204,12 @@ def save_google_profile(
     response_model=DoctorGoogleProfileResponse,
 )
 def get_my_google_profile(
+    user_id: int | None = None,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
     """Consulta el perfil de Google guardado del médico autenticado."""
-    doctor_id = _get_doctor_id(current_user, db)
+    doctor_id = _get_doctor_id(current_user, db, user_id)
 
     profile = doctor_google_save_service.get_profile(db=db, doctor_id=doctor_id)
 
@@ -208,4 +219,16 @@ def get_my_google_profile(
             detail="Todavía no tienes un perfil de Google registrado.",
         )
 
-    return DoctorGoogleProfileResponse.model_validate(profile)
+    saved_imgs = (
+        db.query(DoctorGoogleImage)
+        .filter(DoctorGoogleImage.google_profile_id == profile.id)
+        .order_by(DoctorGoogleImage.image_order)
+        .all()
+    )
+
+    # No rellenar con imágenes estáticas: devolver solo las fotos reales del perfil
+    db.expire(profile)
+    resp = DoctorGoogleProfileResponse.model_validate(profile)
+    resp.images = saved_imgs
+    resp.photos = [img.image_url for img in saved_imgs if img.image_url]
+    return resp

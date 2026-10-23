@@ -81,6 +81,51 @@ class CloudinaryService:
             )
 
     @staticmethod
+    def upload_base64_file(base64_data: str, folder: str = "medical_app", resource_type: str = "auto") -> dict:
+        """
+        Sube un archivo en formato Base64 o Data URI a Cloudinary.
+        """
+        try:
+            upload_target = base64_data
+            if not upload_target.startswith("data:") and not upload_target.startswith("http"):
+                upload_target = f"data:image/jpeg;base64,{base64_data}"
+
+            result = cloudinary.uploader.upload(
+                upload_target,
+                folder=folder,
+                resource_type=resource_type
+            )
+            return {
+                "public_id": result.get("public_id"),
+                "file_url": result.get("secure_url"),
+                "secure_url": result.get("secure_url"),
+                "mime_type": result.get("format"),
+                "file_size": result.get("bytes", 0),
+                "resource_type": result.get("resource_type", resource_type),
+            }
+        except Exception as e:
+            logger.warning(f"Error al subir base64 a Cloudinary con resource_type={resource_type}: {str(e)}")
+            if resource_type != "raw" and ("pdf" in str(base64_data[:80]).lower() or "octet-stream" in str(base64_data[:80]).lower()):
+                try:
+                    result = cloudinary.uploader.upload(
+                        upload_target,
+                        folder=folder,
+                        resource_type="raw"
+                    )
+                    return {
+                        "public_id": result.get("public_id"),
+                        "file_url": result.get("secure_url"),
+                        "secure_url": result.get("secure_url"),
+                        "mime_type": "application/pdf",
+                        "file_size": result.get("bytes", 0),
+                        "resource_type": "raw",
+                    }
+                except Exception as inner_e:
+                    logger.error(f"Error en fallback Cloudinary raw para base64: {str(inner_e)}")
+                    raise inner_e
+            raise e
+
+    @staticmethod
     def extract_public_id(file_url: str) -> str:
         """
         Extrae el public_id de Cloudinary desde una URL pública.

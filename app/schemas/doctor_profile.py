@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Union
 
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -258,6 +258,9 @@ class DoctorProfileUpdate(BaseModel):
         max_length=500
     )
 
+    languages: Optional[Union[List[str], str]] = None
+    insurance_company: Optional[str] = None
+
     # ------------------------------------------------------
     # POLÍTICA DE DATOS
     # ------------------------------------------------------
@@ -354,6 +357,8 @@ class DoctorProfileResponse(BaseModel):
     consultation_phone: Optional[str] = None
 
     website: Optional[str] = None
+    languages: Optional[Union[List[str], str]] = None
+    insurance_company: Optional[str] = None
 
     # ------------------------------------------------------
     # ESTADO Y VERIFICACIÓN
@@ -464,6 +469,12 @@ class DoctorFreeCreateRequest(BaseModel):
     password: Optional[str] = None
     language: Optional[str] = "es"
     subscription_plan_id: Optional[int] = None
+    google_profile_data: Optional[dict[str, Any]] = None
+    certificate_base64: Optional[str] = None
+    certificate_filename: Optional[str] = None
+    certificate_mime_type: Optional[str] = None
+    languages: Optional[Union[List[str], str]] = None
+    insurance_company: Optional[str] = None
 
 
 
@@ -567,6 +578,8 @@ class DoctorCreateRequest(BaseModel):
     )
 
     language: Optional[str] = "es"
+    languages: Optional[Union[List[str], str]] = None
+    insurance_company: Optional[str] = None
 
     password: Optional[str] = None
 
@@ -575,3 +588,4 @@ class DoctorCreateRequest(BaseModel):
         default=None,
         description="ID del plan de suscripción elegido. Si es None se asigna el plan gratuito."
     )
+    google_profile_data: Optional[dict[str, Any]] = None
