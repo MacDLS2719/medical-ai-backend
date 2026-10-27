@@ -117,7 +117,7 @@ class DoctorGoogleProfileResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-    doctor_id: int
+    doctor_id: int | None = None
     google_place_id: str | None = None
     business_name: str
     google_category: str | None = None

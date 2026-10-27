@@ -49,6 +49,11 @@ from app.models.patient_location import PatientLocation
 from app.models.transcription_attachment import TranscriptionAttachment
 from app.models.support_ai_conversation import SupportAIConversation
 
+from app.models.accounting_attachment import AccountingAttachment
+from app.models.accounting_expense import AccountingExpense
+from app.models.accounting_invoice import AccountingInvoice
+from app.models.accounting_transaction import AccountingTransaction
+
 __all__ = [
     "User",
     "Doctor",
@@ -96,4 +101,8 @@ __all__ = [
     "PatientLocation",
     "TranscriptionAttachment",
     "SupportAIConversation",
+    "AccountingAttachment",
+    "AccountingExpense",
+    "AccountingInvoice",
+    "AccountingTransaction",
 ]

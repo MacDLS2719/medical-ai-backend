@@ -27,6 +27,7 @@ from app.routers import (
     call_transcriptions,
     doctor_google,
     doctor_search,
+    accounting,
 )
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -169,6 +170,11 @@ app.include_router(
 
 app.include_router(
     doctor_search.router,
+    prefix="/api",
+)
+
+app.include_router(
+    accounting.router,
     prefix="/api",
 )
 

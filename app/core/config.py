@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     GOOGLE_TRANSLATE_API_KEY: str = ""
     USE_LOCAL_TRANSLATION: bool = False
 
+    # Google Maps / Places API
+    GOOGLE_MAPS_API_KEY: str = ""
+
     # Daily.co — videollamadas
     DAILY_API_KEY: str = ""
 

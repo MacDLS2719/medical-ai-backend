@@ -1,3 +1,5 @@
+from uuid import UUID
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
@@ -232,3 +234,218 @@ def get_my_google_profile(
     resp.images = saved_imgs
     resp.photos = [img.image_url for img in saved_imgs if img.image_url]
     return resp
+
+
+@router.get(
+    "/external",
+    response_model=list[DoctorGoogleProfileResponse],
+)
+def list_external_google_profiles(
+    query: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """
+    Obtiene la lista de médicos externos registrados (doctor_id = null).
+    Permite filtrar por nombre, especialidad o dirección.
+    """
+    q = db.query(DoctorGoogleProfile).filter(DoctorGoogleProfile.doctor_id == None)
+    if query:
+        q_clean = f"%{query.strip()}%"
+        q = q.filter(
+            (DoctorGoogleProfile.business_name.ilike(q_clean))
+            | (DoctorGoogleProfile.formatted_address.ilike(q_clean))
+            | (DoctorGoogleProfile.google_category.ilike(q_clean))
+        )
+    profiles = (
+        q.order_by(DoctorGoogleProfile.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    results = []
+    for p in profiles:
+        db.expire(p)
+        resp = DoctorGoogleProfileResponse.model_validate(p)
+        saved_imgs = (
+            db.query(DoctorGoogleImage)
+            .filter(DoctorGoogleImage.google_profile_id == p.id)
+            .order_by(DoctorGoogleImage.image_order)
+            .all()
+        )
+        resp.images = saved_imgs
+        resp.photos = [img.image_url for img in saved_imgs if img.image_url]
+        results.append(resp)
+    return results
+
+
+@router.post(
+    "/external",
+    response_model=DoctorGoogleProfileResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def save_or_update_external_google_profile(
+    payload: DoctorGoogleSaveRequest,
+    profile_id: UUID | None = None,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """
+    Guarda o actualiza un médico externo (doctor_id = null).
+    Sincroniza sus imágenes con Cloudinary.
+    """
+    data = payload.model_dump(mode="python")
+
+    # Si se pasa un profile_id (edición)
+    if profile_id:
+        profile = (
+            db.query(DoctorGoogleProfile)
+            .filter(
+                DoctorGoogleProfile.id == profile_id,
+                DoctorGoogleProfile.doctor_id == None,
+            )
+            .first()
+        )
+        if profile:
+            profile.business_name = data.get("business_name") or profile.business_name
+            for field in (
+                "google_place_id",
+                "google_category",
+                "phone_number",
+                "formatted_address",
+                "opening_hours",
+                "booking_url",
+                "google_maps_url",
+                "website_url",
+            ):
+                val = data.get(field)
+                if val is not None:
+                    setattr(profile, field, val)
+
+            if "google_rating" in data:
+                profile.google_rating = doctor_google_save_service._decimal_or_none(
+                    data.get("google_rating")
+                )
+            if "google_reviews_count" in data:
+                profile.google_reviews_count = doctor_google_save_service._int_or_none(
+                    data.get("google_reviews_count")
+                )
+            if "latitude" in data:
+                profile.latitude = doctor_google_save_service._decimal_or_none(
+                    data.get("latitude")
+                )
+            if "longitude" in data:
+                profile.longitude = doctor_google_save_service._decimal_or_none(
+                    data.get("longitude")
+                )
+
+            profile.last_synced_at = datetime.now(timezone.utc)
+            db.flush()
+
+            # Extraer y actualizar fotos
+            raw_photos = data.get("photos") or data.get("images") or []
+            photos: list[str] = []
+            for item in raw_photos:
+                if isinstance(item, str) and item.strip():
+                    photos.append(item.strip())
+                elif isinstance(item, dict):
+                    u = item.get("image_url") or item.get("url")
+                    if u and isinstance(u, str) and u.strip():
+                        photos.append(u.strip())
+
+            if photos:
+                existing_images = (
+                    db.query(DoctorGoogleImage)
+                    .filter(DoctorGoogleImage.google_profile_id == profile.id)
+                    .all()
+                )
+                for img in existing_images:
+                    db.delete(img)
+                db.flush()
+
+                for position, image_url in enumerate(photos[:3], start=1):
+                    if not image_url:
+                        continue
+                    uploaded_url, public_id = (
+                        doctor_google_save_service._upload_photo_to_cloudinary(
+                            image_url
+                        )
+                    )
+                    db.add(
+                        DoctorGoogleImage(
+                            google_profile_id=profile.id,
+                            image_url=uploaded_url,
+                            image_path=public_id,
+                            image_order=position,
+                            is_active=True,
+                        )
+                    )
+                db.flush()
+
+            db.commit()
+            db.refresh(profile)
+        else:
+            profile = doctor_google_save_service.save_external_profile(
+                db=db, data=data
+            )
+            db.commit()
+            if profile:
+                db.refresh(profile)
+    else:
+        profile = doctor_google_save_service.save_external_profile(db=db, data=data)
+        db.commit()
+        if profile:
+            db.refresh(profile)
+
+    if not profile:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No se pudo guardar el médico externo.",
+        )
+
+    saved_imgs = (
+        db.query(DoctorGoogleImage)
+        .filter(DoctorGoogleImage.google_profile_id == profile.id)
+        .order_by(DoctorGoogleImage.image_order)
+        .all()
+    )
+    db.expire(profile)
+    resp = DoctorGoogleProfileResponse.model_validate(profile)
+    resp.images = saved_imgs
+    resp.photos = [img.image_url for img in saved_imgs if img.image_url]
+    return resp
+
+
+@router.delete(
+    "/external/{profile_id}",
+    status_code=status.HTTP_200_OK,
+)
+def delete_external_google_profile(
+    profile_id: UUID,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """
+    Elimina un médico externo de la base de datos (doctor_id = null).
+    """
+    profile = (
+        db.query(DoctorGoogleProfile)
+        .filter(
+            DoctorGoogleProfile.id == profile_id,
+            DoctorGoogleProfile.doctor_id == None,
+        )
+        .first()
+    )
+
+    if not profile:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Médico externo no encontrado.",
+        )
+
+    db.delete(profile)
+    db.commit()
+    return {"success": True, "message": "Médico externo eliminado exitosamente."}
