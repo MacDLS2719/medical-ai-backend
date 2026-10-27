@@ -1,14 +1,22 @@
 import logging
 from datetime import datetime
+from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
+from pydantic import BaseModel
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
 from app.core.deps import get_db
 from app.services.call_transcription_service import CallTranscriptionPipeline
+from app.services.transcription_docx_service import (
+    create_clinical_report_docx,
+    create_combined_report_docx,
+    create_transcription_docx,
+    extract_text_and_sections_from_docx,
+)
 from app.services.transcription_pdf_service import (
     create_clinical_report_pdf,
     create_transcription_pdf,
@@ -20,6 +28,18 @@ from app.models.user import User
 
 router = APIRouter(tags=["Call Transcriptions"])
 logger = logging.getLogger(__name__)
+
+
+class UpdateTranscriptionRequest(BaseModel):
+    summary_text: Optional[str] = None
+    transcript_text: Optional[str] = None
+    motivo: Optional[str] = None
+    exploracion: Optional[str] = None
+    diagnostico: Optional[str] = None
+    plan: Optional[str] = None
+    summary_approved: Optional[bool] = None
+    patient_id: Optional[int] = None
+
 
 
 @router.get("/call-transcriptions/patients")
@@ -152,11 +172,6 @@ def approve_call_transcription_summary(
     )
     if not record:
         raise HTTPException(status_code=404, detail="Transcripción no encontrada")
-    if record.patient_id is None:
-        raise HTTPException(
-            status_code=400,
-            detail="Las grabaciones personales no se comparten con pacientes.",
-        )
     if record.status != "completed" or not record.summary_text:
         raise HTTPException(
             status_code=409,
@@ -169,6 +184,122 @@ def approve_call_transcription_summary(
         db.commit()
         db.refresh(record)
     return _serialize(record, include_text=True)
+
+
+@router.put("/call-transcriptions/{transcription_id}")
+def update_call_transcription(
+    transcription_id: int,
+    body: UpdateTranscriptionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Permite al médico editar el informe médico (sus 4 secciones o texto íntegro),
+    la transcripción completa, vincular o cambiar el paciente asignado, y opcionalmente
+    aprobar el informe tanto para consultas presenciales como para videollamadas.
+    """
+    if current_user.role != "doctor":
+        raise HTTPException(status_code=403, detail="Solo los médicos pueden editar el informe y la transcripción")
+
+    record = (
+        db.query(TranscriptionAttachment)
+        .filter(
+            TranscriptionAttachment.id == transcription_id,
+            TranscriptionAttachment.doctor_id == current_user.id,
+        )
+        .first()
+    )
+    if not record:
+        raise HTTPException(status_code=404, detail="Transcripción no encontrada")
+
+    # Si se pasaron los campos clínicos individuales
+    if any([body.motivo is not None, body.exploracion is not None, body.diagnostico is not None, body.plan is not None]):
+        motivo = (body.motivo or "").strip()
+        exploracion = (body.exploracion or "").strip()
+        diagnostico = (body.diagnostico or "").strip()
+        plan = (body.plan or "").strip()
+        record.summary_text = (
+            f"MOTIVO DE CONSULTA:\n{motivo or 'No referido.'}\n\n"
+            f"EXPLORACIÓN FÍSICA:\n{exploracion or 'No referida.'}\n\n"
+            f"IMPRESIÓN DIAGNÓSTICA:\n{diagnostico or 'No especificada.'}\n\n"
+            f"PLAN Y TRATAMIENTO:\n{plan or 'No especificado.'}"
+        )
+    elif body.summary_text is not None:
+        record.summary_text = body.summary_text.strip()
+
+    if body.transcript_text is not None:
+        record.transcript_text = body.transcript_text.strip()
+
+    if body.patient_id is not None:
+        record.patient_id = body.patient_id
+
+    if body.summary_approved is not None:
+        record.summary_approved = bool(body.summary_approved)
+        if record.summary_approved:
+            record.summary_approved_at = datetime.utcnow()
+
+    record.status = "completed"
+    db.commit()
+    db.refresh(record)
+
+    return _serialize(record, include_text=True)
+
+
+@router.post("/call-transcriptions/{transcription_id}/upload-docx")
+async def upload_docx_transcription(
+    transcription_id: int,
+    file: UploadFile = File(...),
+    auto_approve: bool = Query(default=False),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Permite al médico subir un archivo Word (.docx) editado:
+    - Extrae el texto y secciones del archivo.
+    - Actualiza el informe y/o la transcripción en la base de datos.
+    - Si auto_approve=True, aprueba el resumen para que el paciente lo vea inmediatamente.
+    """
+    if current_user.role != "doctor":
+        raise HTTPException(status_code=403, detail="Solo los médicos pueden subir informes actualizados.")
+
+    record = (
+        db.query(TranscriptionAttachment)
+        .filter(
+            TranscriptionAttachment.id == transcription_id,
+            TranscriptionAttachment.doctor_id == current_user.id,
+        )
+        .first()
+    )
+    if not record:
+        raise HTTPException(status_code=404, detail="Transcripción no encontrada")
+
+    file_bytes = await file.read()
+    if not file_bytes:
+        raise HTTPException(status_code=400, detail="El archivo subido está vacío.")
+
+    try:
+        parsed = extract_text_and_sections_from_docx(file_bytes)
+    except Exception as exc:
+        logger.exception("Error extrayendo texto del archivo Word subido: %s", exc)
+        raise HTTPException(status_code=400, detail=f"No se pudo leer el archivo Word: {exc}")
+
+    if parsed.get("summary_text"):
+        record.summary_text = parsed["summary_text"]
+    if parsed.get("transcript_text"):
+        record.transcript_text = parsed["transcript_text"]
+
+    if auto_approve:
+        record.summary_approved = True
+        record.summary_approved_at = datetime.utcnow()
+
+    record.status = "completed"
+    db.commit()
+    db.refresh(record)
+
+    data = _serialize(record, include_text=True)
+    data["parsed_sections"] = parsed.get("sections")
+    return {"status": "ok", "data": data}
+
 
 
 @router.get("/call-transcriptions/patient")
@@ -328,6 +459,129 @@ def download_call_transcription_report(
     current_user: User = Depends(get_current_user),
 ):
     return download_clinical_report(transcription_id, db, current_user)
+
+
+@router.get("/call-transcriptions/{transcription_id}/clinical-report.docx")
+def download_clinical_report_docx(
+    transcription_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Descarga el INFORME MÉDICO oficial en formato Microsoft Word (.docx).
+    """
+    record = _get_authorized_record(db, transcription_id, current_user)
+    if not record.summary_text:
+        raise HTTPException(status_code=409, detail="El informe médico aún no está completo.")
+
+    service_type = "Videollamada" if record.conversation_id is not None else "Presencial"
+    date_str = _format_spanish_datetime(record.recorded_at or record.created_at)
+    patient_name = _user_name(
+        record.patient,
+        "Consulta personal / presencial" if record.conversation_id is None else "Paciente",
+    )
+    patient_gender = _patient_gender(record.patient)
+    doctor_name = _user_name(record.doctor, "Médico tratante")
+
+    docx_bytes = create_clinical_report_docx(
+        service_type=service_type,
+        specialty="Medicina General",
+        date_str=date_str,
+        patient_name=patient_name,
+        patient_gender=patient_gender,
+        doctor_name=doctor_name,
+        summary=record.summary_text,
+    )
+    return Response(
+        content=docx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={
+            "Content-Disposition": f'attachment; filename="informe-medico-{record.id}.docx"',
+            "Cache-Control": "private, no-store",
+        },
+    )
+
+
+@router.get("/call-transcriptions/{transcription_id}/transcript.docx")
+def download_transcript_docx(
+    transcription_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Descarga la TRANSCRIPCIÓN COMPLETA del audio en formato Microsoft Word (.docx).
+    """
+    record = _get_authorized_record(db, transcription_id, current_user)
+    if not record.transcript_text:
+        raise HTTPException(status_code=409, detail="La transcripción de audio aún no está disponible.")
+
+    service_type = "Videollamada" if record.conversation_id is not None else "Presencial"
+    date_str = _format_spanish_datetime(record.recorded_at or record.created_at)
+    patient_name = _user_name(
+        record.patient,
+        "Consulta personal / presencial" if record.conversation_id is None else "Paciente",
+    )
+    doctor_name = _user_name(record.doctor, "Médico tratante")
+
+    docx_bytes = create_transcription_docx(
+        service_type=service_type,
+        specialty="Medicina General",
+        date_str=date_str,
+        patient_name=patient_name,
+        doctor_name=doctor_name,
+        transcript=record.transcript_text,
+    )
+    return Response(
+        content=docx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={
+            "Content-Disposition": f'attachment; filename="transcripcion-{record.id}.docx"',
+            "Cache-Control": "private, no-store",
+        },
+    )
+
+
+@router.get("/call-transcriptions/{transcription_id}/report.docx")
+def download_combined_report_docx(
+    transcription_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Descarga el expediente integral (Informe Médico y Transcripción) en formato Word (.docx).
+    """
+    record = _get_authorized_record(db, transcription_id, current_user)
+    if not record.summary_text and not record.transcript_text:
+        raise HTTPException(status_code=409, detail="El informe o la transcripción no están disponibles.")
+
+    service_type = "Videollamada" if record.conversation_id is not None else "Presencial"
+    date_str = _format_spanish_datetime(record.recorded_at or record.created_at)
+    patient_name = _user_name(
+        record.patient,
+        "Consulta personal / presencial" if record.conversation_id is None else "Paciente",
+    )
+    patient_gender = _patient_gender(record.patient)
+    doctor_name = _user_name(record.doctor, "Médico tratante")
+
+    docx_bytes = create_combined_report_docx(
+        service_type=service_type,
+        specialty="Medicina General",
+        date_str=date_str,
+        patient_name=patient_name,
+        patient_gender=patient_gender,
+        doctor_name=doctor_name,
+        summary=record.summary_text or "",
+        transcript=record.transcript_text or "",
+    )
+    return Response(
+        content=docx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={
+            "Content-Disposition": f'attachment; filename="informe-y-transcripcion-{record.id}.docx"',
+            "Cache-Control": "private, no-store",
+        },
+    )
+
 
 
 @router.get("/call-transcriptions")

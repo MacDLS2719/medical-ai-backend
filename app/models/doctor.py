@@ -52,6 +52,11 @@ class Doctor(Base):
         index=True
     )
 
+    user = relationship(
+        "User",
+        back_populates="doctor",
+    )
+
     # ==========================================================
     # DATOS PERSONALES
     # ==========================================================

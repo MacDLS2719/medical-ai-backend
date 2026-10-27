@@ -329,7 +329,7 @@ class DoctorGoogleSearchService:
         return combined_text[:4500], found_urls
 
     async def _scrape_directory_page(self, url: str) -> dict[str, Any]:
-        """Si se encuentra una URL médica de directorios o clínica, extrae Schema.org y metadatos."""
+        """Si se encuentra una URL médica de directorios o clínica, extrae Schema.org y metadatos (sin imágenes)."""
         info: dict[str, Any] = {"photos": []}
         try:
             async with httpx.AsyncClient(
@@ -371,24 +371,9 @@ class DoctorGoogleSearchService:
                                 info["google_reviews_count"] = item["aggregateRating"].get("reviewCount")
                             if "openingHours" in item or "openingHoursSpecification" in item:
                                 info["opening_hours_raw"] = item.get("openingHours") or item.get("openingHoursSpecification")
-                            if "image" in item:
-                                img = item["image"]
-                                if isinstance(img, str) and img.startswith("http"):
-                                    info["photos"].append(img)
-                                elif isinstance(img, list):
-                                    for i in img:
-                                        if isinstance(i, str) and i.startswith("http"):
-                                            info["photos"].append(i)
-                                        elif isinstance(i, dict) and i.get("url") and i["url"].startswith("http"):
-                                            info["photos"].append(i["url"])
+                            # NOTE: images intentionally NOT extracted — user uploads them manually
                     except Exception:
                         pass
-
-                og_img = soup.find("meta", property="og:image") or soup.find("meta", attrs={"name": "twitter:image"})
-                if og_img and og_img.get("content"):
-                    u = og_img["content"].strip()
-                    if u.startswith("http") and not u.endswith(".ico") and "favicon" not in u:
-                        info["photos"].append(u)
         except Exception:
             pass
         return info
@@ -449,7 +434,7 @@ class DoctorGoogleSearchService:
         if html_content:
             soup = BeautifulSoup(html_content, "html.parser")
 
-            # JSON-LD (Schema.org)
+            # JSON-LD (Schema.org) — only metadata, NO images
             for script in soup.find_all("script", type="application/ld+json"):
                 try:
                     if not script.string:
@@ -488,16 +473,11 @@ class DoctorGoogleSearchService:
                             u = item["url"]
                             if u and u.startswith("http") and "google.com" not in u:
                                 extracted["website_url"] = u
-                        if "image" in item:
-                            img = item["image"]
-                            if isinstance(img, str) and img.startswith("http"):
-                                extracted["photos"].append(img)
-                            elif isinstance(img, list):
-                                extracted["photos"].extend([i for i in img if isinstance(i, str) and i.startswith("http")])
+                        # NOTE: images intentionally NOT extracted — user uploads them manually
                 except Exception:
                     pass
 
-            # Meta OpenGraph
+            # Meta OpenGraph title only (no image)
             og_title = soup.find("meta", property="og:title")
             if og_title and og_title.get("content"):
                 title_val = og_title["content"].strip()
@@ -506,65 +486,6 @@ class DoctorGoogleSearchService:
                         title_val = title_val.split(sep)[0].strip()
                 if title_val and len(title_val) > 1 and not extracted["business_name"]:
                     extracted["business_name"] = title_val
-
-            og_image = soup.find("meta", property="og:image") or soup.find("meta", attrs={"name": "twitter:image"})
-            if og_image and og_image.get("content"):
-                img_url = og_image["content"]
-                if img_url.startswith("http") and not img_url.endswith("favicon.ico"):
-                    if img_url not in extracted["photos"]:
-                        extracted["photos"].append(img_url)
-
-            # Extraer imágenes desde tags <img> de Google
-            for img in soup.find_all("img"):
-                src = img.get("src") or img.get("data-src") or img.get("data-photo-url")
-                if src and isinstance(src, str):
-                    if src.startswith("//"):
-                        src = f"https:{src}"
-                    if ("googleusercontent.com/p/" in src or "streetviewpixels" in src) and src.startswith("http"):
-                        clean_src = src.split("=")[0] + "=s1200" if "=s" not in src else src
-                        if clean_src not in extracted["photos"]:
-                            extracted["photos"].append(clean_src)
-
-            # -----------------------------------------------------------------
-            # Extraer fotos de alta resolución del perfil de Google Maps/Search
-            # -----------------------------------------------------------------
-
-            # Patrón 1: AF1Qip... — IDs nativos de fotos de Google Maps/Places
-            af_ids_seen: set[str] = set()
-            af_matches = re.findall(r'AF1Qip[A-Za-z0-9_\-]+', html_content)
-            for af_id in af_matches:
-                if len(af_id) > 10 and af_id not in af_ids_seen:
-                    af_ids_seen.add(af_id)
-                    photo_url = f"https://lh3.googleusercontent.com/p/{af_id}=s1200"
-                    if photo_url not in extracted["photos"]:
-                        extracted["photos"].append(photo_url)
-
-            # Patrón 2: URLs directas lh[3-6].googleusercontent.com/p/...
-            lh_matches = re.findall(r'https?://lh[3-6]\.googleusercontent\.com/p/[A-Za-z0-9_\-]+', html_content)
-            for m in lh_matches:
-                full_m = f"{m}=s1200" if ("=s" not in m and "=w" not in m) else m
-                if full_m not in extracted["photos"]:
-                    extracted["photos"].append(full_m)
-
-            # Patrón 3: URLs escapadas en bloques JS (lh3\.googleusercontent\.com\/p\/ID)
-            lh_escaped = re.findall(
-                r'lh[3-6]\\+\.googleusercontent\\+\.com\\+/p\\+/([A-Za-z0-9_\-]+)', html_content
-            )
-            for photo_id in lh_escaped:
-                if len(photo_id) > 8:
-                    photo_url = f"https://lh3.googleusercontent.com/p/{photo_id}=s1200"
-                    if photo_url not in extracted["photos"]:
-                        extracted["photos"].append(photo_url)
-
-            # Patrón 4: URLs StreetView thumbnail público (sin key)
-            sv_matches = re.findall(
-                r'https?://streetviewpixels-pa\.googleapis\.com/v1/thumbnail\?[^\s"\'\\]+',
-                html_content,
-            )
-            for m in sv_matches:
-                clean_m = m.replace("\u0026amp;", "&").replace("&amp;", "&")
-                if clean_m not in extracted["photos"]:
-                    extracted["photos"].append(clean_m)
 
             # Teléfono desde tel: links
             if not extracted.get("phone_number"):
@@ -1074,32 +995,9 @@ class DoctorGoogleSearchService:
                     extracted["website_url"] = u
                     break
 
-        # ----------------------------------------------------------------
-        # Fotos: intentar en este orden
-        #   1. Knowledge Panel de Google Search (más fiable, gratuito)
-        #   2. DuckDuckGo Images + Bing (fallback)
-        # ----------------------------------------------------------------
-        business_name_for_photos = extracted.get("business_name") or final_query or ""
-        addr_for_photos = extracted.get("formatted_address") or ""
-        city_hint = ""
-        if addr_for_photos:
-            parts = [p.strip() for p in addr_for_photos.split(",")]
-            city_hint = parts[-2] if len(parts) >= 2 else parts[0] if parts else ""
-
-        if business_name_for_photos and len(extracted.get("photos", [])) < 3:
-            kp_photos = await self._fetch_knowledge_panel_photos(
-                business_name_for_photos, city_hint
-            )
-            for wp in kp_photos:
-                if wp not in extracted["photos"]:
-                    extracted["photos"].append(wp)
-
-        # Fallback: DuckDuckGo + Bing si aún no hay 3 fotos
-        if business_name_for_photos and len(extracted.get("photos", [])) < 3:
-            ddg_photos = await self._fetch_business_photos(business_name_for_photos, city_hint)
-            for wp in ddg_photos:
-                if wp not in extracted["photos"]:
-                    extracted["photos"].append(wp)
+        # NOTE: Photo fetching removed — photos array stays empty.
+        # The user uploads their own images from the frontend
+        # (URL link, file upload, or camera capture).
 
         # Enriquecer con OpenAI usando los fragmentos web mundiales
         if final_query:
@@ -1170,12 +1068,8 @@ class DoctorGoogleSearchService:
                     extracted["website_url"] = u
                     break
 
-        # Si aún tenemos menos de 3 fotos, buscar fotos del negocio en la web
-        if len(extracted.get("photos", [])) < 3 and full_query:
-            web_photos = await self._fetch_business_photos(full_query, city)
-            for wp in web_photos:
-                if wp not in extracted["photos"]:
-                    extracted["photos"].append(wp)
+        # NOTE: Photo fetching removed — photos array stays empty.
+        # The user uploads their own images from the frontend.
 
         # Enriquecer con OpenAI
         await self._enrich_with_openai_and_web(

@@ -12,6 +12,7 @@ from app.models.medical_doctor_availability import MedicalDoctorAvailability
 from app.services.doctor_external_search_service import (
     doctor_external_search_service,
     resolve_city_coordinates,
+    classify_medical_place,
 )
 from app.services.doctor_google_search_service import (
     doctor_google_search_service,
@@ -238,6 +239,8 @@ class DoctorSearchService:
             "availabilities": [],
             "is_our_doctor": False,
             "is_verified": False,
+            "place_type": classify_medical_place(p.business_name, p.google_category)[0],
+            "is_clinic": classify_medical_place(p.business_name, p.google_category)[1],
         }
 
     def _search_database(
@@ -366,6 +369,8 @@ class DoctorSearchService:
                 "availabilities": avail_data,
                 "is_our_doctor": True,
                 "is_verified": True,
+                "place_type": "doctor",
+                "is_clinic": False,
             })
 
         # ------------------------------------------------------------------

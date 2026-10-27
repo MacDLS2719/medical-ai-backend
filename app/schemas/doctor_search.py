@@ -88,6 +88,8 @@ class DoctorSearchResult(BaseModel):
 
     is_our_doctor: bool = False
     is_verified: bool = False
+    place_type: str | None = Field(default="doctor", description="'doctor' | 'clinic' | 'hospital'")
+    is_clinic: bool = Field(default=False, description="True si es una clínica u hospital, False si es un médico/especialista")
 
 
 class DoctorSearchResponse(BaseModel):

@@ -5,6 +5,7 @@ from uuid import UUID
 
 from fastapi import (
     APIRouter,
+    Body,
     Depends,
     File,
     HTTPException,
@@ -141,3 +142,103 @@ def list_movements(
         limit=limit,
         offset=offset,
     )
+
+
+@router.post("/invoices/generate-pdf")
+def generate_invoice_pdf_endpoint(
+    payload: dict = Body(...),
+    doctor: Doctor = Depends(get_authenticated_doctor),
+    db: Session = Depends(get_db),
+):
+    from fastapi.responses import Response
+    from app.services.invoice_pdf_service import create_invoice_pdf
+
+    # Inyectar datos REALES del doctor si no vienen especificados
+    if "issuer" not in payload or not payload["issuer"].get("name"):
+        first = getattr(doctor, "first_name", "") or ""
+        last = getattr(doctor, "last_name", "") or ""
+        doc_name = f"{first} {last}".strip() or "Dr. Especialista Médico"
+
+        bp = getattr(doctor, "billing_profile", None)
+        nif = (bp.tax_id if bp else None) or "—"
+        addr_parts = filter(None, [
+            getattr(doctor, "address", None),
+            getattr(doctor, "city", None),
+            getattr(doctor, "country", None),
+        ])
+        address = ", ".join(addr_parts) or "Centro Médico Mivor"
+
+        user = getattr(doctor, "user", None)
+        email = (user.email if user else None) or "doctor@mivor.com"
+
+        payload["issuer"] = {
+            "name": doc_name,
+            "nif": nif,
+            "address": address,
+            "email": email,
+        }
+
+    invoice_number = payload.get("invoice_number") or "FAC-2026-0001"
+    pdf_bytes = create_invoice_pdf(payload)
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="Factura_{invoice_number}.pdf"',
+            "Access-Control-Expose-Headers": "Content-Disposition",
+        },
+    )
+
+
+@router.get("/doctor-invoice-profile")
+def get_doctor_invoice_profile(
+    db: Session = Depends(get_db),
+    doctor: Doctor = Depends(get_authenticated_doctor),
+):
+    """
+    Devuelve los datos reales del médico para pre-rellenar el emisor en las facturas.
+    Incluye nombre completo, NIF/CIF (de billing_profile), dirección, email y especialidad.
+    """
+    first = getattr(doctor, "first_name", "") or ""
+    last = getattr(doctor, "last_name", "") or ""
+    full_name = f"{first} {last}".strip() or "Dr. Médico Especialista"
+
+    bp = getattr(doctor, "billing_profile", None)
+    nif = (bp.tax_id if bp else None) or ""
+    nif_type = (bp.tax_id_type if bp else None) or "NIF"
+
+    addr_parts = list(filter(None, [
+        getattr(doctor, "address", None),
+        getattr(doctor, "city", None),
+        getattr(doctor, "country", None),
+    ]))
+    address = ", ".join(addr_parts) or ""
+
+    user = getattr(doctor, "user", None) or db.query(User).filter(User.id == doctor.user_id).first()
+    email = ""
+    if user:
+        if user.email == "doctor@mock.com":
+            user.email = "doctor@medical-ai.com"
+            try:
+                db.commit()
+                db.refresh(user)
+            except Exception:
+                db.rollback()
+        email = user.email or ""
+
+    specialty = getattr(doctor, "specialty", "") or ""
+
+    return {
+        "full_name": full_name,
+        "first_name": first,
+        "last_name": last,
+        "nif": nif,
+        "nif_type": nif_type,
+        "address": address,
+        "email": email,
+        "specialty": specialty,
+        "phone": getattr(doctor, "phone", "") or "",
+        "consultation_phone": getattr(doctor, "consultation_phone", "") or "",
+    }
+

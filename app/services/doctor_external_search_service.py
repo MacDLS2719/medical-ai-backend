@@ -89,6 +89,58 @@ def resolve_city_coordinates(city: str | None, country: str | None = None) -> tu
     return None
 
 
+def classify_medical_place(business_name: str | None, category: str | None = None) -> tuple[str, bool]:
+    """
+    Clasifica si un establecimiento es un médico individual ('doctor') o una clínica/hospital/centro ('clinic'/'hospital').
+    Retorna (place_type, is_clinic).
+    """
+    name_str = (business_name or "").strip()
+    name_lower = name_str.lower()
+    cat_lower = (category or "").lower()
+    combined = f"{name_lower} {cat_lower}"
+
+    # 1. Palabras clave que SIEMPRE identifican una Clínica, Hospital o Centro Médico
+    hospital_keywords = ["hospital", "sanatorio", "policlínic", "policlinic"]
+    for hk in hospital_keywords:
+        if hk in combined:
+            return ("hospital", True)
+
+    # Si contiene "centro", "clínica", "instituto", "fundación", "unidad", etc. es una institución/centro
+    clinic_or_center_keywords = [
+        "centro", "clínica", "clinica", "instituto", "fundación", "fundacion",
+        "ips", "eps", "laboratorio", "unidad", "complejo", "torre médica", "torre medica",
+        "sede", "sociedad médica", "sociedad medica", "salud", "diagnóstic",
+        "diagnostic", "asociación médica", "asociacion medica", "grupo médico", "grupo medico",
+        "consultorios médicos", "consultorios medicos", "servicios médicos", "servicios medicos",
+        "asistencia médica", "asistencia medica", "emergencias", "urgencias"
+    ]
+
+    for ck in clinic_or_center_keywords:
+        if ck in name_lower or ck in cat_lower:
+            return ("clinic", True)
+
+    # 2. Prefijos evidentes de médicos/especialistas personas (Dr., Dra., etc.)
+    if name_lower.startswith(("dr.", "dra.", "dr ", "dra ", "doctor ", "doctora ", "médico ", "medico ")):
+        return ("doctor", False)
+
+    if "dr." in name_lower or "dra." in name_lower:
+        return ("doctor", False)
+
+    # 3. Palabras clave de doctor / consultorio particular
+    doctor_keywords = [
+        "consultorio", "especialista", "pediatra", "dermatólog", "dermatolog",
+        "cardiólog", "cardiolog", "ginecólogo", "ginecolog", "neurólog", "neurolog",
+        "traumatólog", "traumatolog", "oftalmólog", "oftalmolog", "psiquiatra",
+        "urólogo", "urolog", "cirujano", "cirujana"
+    ]
+    for dk in doctor_keywords:
+        if dk in combined:
+            return ("doctor", False)
+
+    # Por defecto, si tiene nombre tipo empresa/institución es clínica, si no doctor
+    return ("clinic", True)
+
+
 class DoctorExternalSearchService:
     """
     Servicio integral de BÚSQUEDA EXTERNA de médicos y consultorios (Google Places / Web / OSM).
@@ -274,6 +326,8 @@ class DoctorExternalSearchService:
                 "availabilities": avail_data,
                 "is_our_doctor": is_our,
                 "is_verified": is_our,
+                "place_type": "doctor" if is_our else classify_medical_place(p.business_name, p.google_category)[0],
+                "is_clinic": False if is_our else classify_medical_place(p.business_name, p.google_category)[1],
             })
 
         results.sort(key=lambda r: r.get("distance_km", 9999))
@@ -423,6 +477,8 @@ class DoctorExternalSearchService:
                         ],
                         "is_our_doctor": False,
                         "is_verified": False,
+                        "place_type": classify_medical_place(b_name, d.get("google_category"))[0],
+                        "is_clinic": classify_medical_place(b_name, d.get("google_category"))[1],
                     }
                     results.append(normalized_item)
 
@@ -486,6 +542,8 @@ class DoctorExternalSearchService:
                                 ],
                                 "is_our_doctor": False,
                                 "is_verified": False,
+                                "place_type": "hospital" if "hospital" in ((tags.get("amenity") or "") + (tags.get("healthcare") or "")).lower() else "clinic",
+                                "is_clinic": True,
                             })
                         return osm_list
                 except Exception:
